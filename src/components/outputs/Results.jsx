@@ -36,24 +36,44 @@ export function HeadlineCard({ buyFinal, rentFinal, breakEvenYear, horizonYears,
   const rentFullyInsolvent = rentSnapshots?.some(s => s.fullyInsolvent);
   const anyInsolvent = buyInsolventYear || rentInsolventYear;
 
+  // Debt at end of horizon for each insolvent scenario
+  const buyFinalPortfolio = buySnapshots?.[buySnapshots.length - 1]?.portfolioAfterTax ?? 0;
+  const rentFinalPortfolio = rentSnapshots?.[rentSnapshots.length - 1]?.portfolioAfterTax ?? 0;
+  const buyMonthlySurplus = buySnapshots?.[0]?.monthlySurplus ?? 0;
+  const rentMonthlySurplus = rentSnapshots?.[0]?.monthlySurplus ?? 0;
+
   return (
     <div className="flex flex-col gap-3">
       {anyInsolvent && (
-        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-5 py-4 space-y-1">
-          <p className="text-sm font-bold text-amber-800">⚠ Liquidity Warning</p>
+        <div className={`border-2 rounded-2xl px-5 py-4 space-y-2 ${buyFullyInsolvent || rentFullyInsolvent ? 'bg-red-50 border-red-300' : 'bg-amber-50 border-amber-300'}`}>
+          <p className={`text-sm font-bold ${buyFullyInsolvent || rentFullyInsolvent ? 'text-red-800' : 'text-amber-800'}`}>
+            ⚠ Debt Accumulation Warning
+          </p>
           {buyInsolventYear && (
-            <p className="text-xs text-amber-700">
-              <span className="font-semibold">Buy scenario:</span> liquid savings exhausted by Year {buyInsolventYear}. Total net worth stays positive thanks to home equity — but you'd have no cash cushion and would need a HELOC or to sell the home to cover a shortfall.
-            </p>
+            <div className="text-xs text-amber-700 space-y-0.5">
+              <p>
+                <span className="font-semibold">Buy scenario:</span> liquid savings run out in Year {buyInsolventYear}.
+                After that, you're accumulating approximately <span className="font-semibold">{formatDollarFull(Math.abs(buyMonthlySurplus))}/mo in debt</span> to fund the gap between your income and housing costs.
+              </p>
+              {buyFinalPortfolio < 0 && (
+                <p>By Year {horizonYears}, this debt totals <span className="font-semibold text-red-700">{formatDollarFull(Math.abs(buyFinalPortfolio))}</span> — shown as the dashed line crossing below zero on the chart. Total net worth remains positive only because home equity offsets it.</p>
+              )}
+            </div>
           )}
           {rentInsolventYear && (
-            <p className="text-xs text-amber-700">
-              <span className="font-semibold">Rent scenario:</span> liquid savings exhausted by Year {rentInsolventYear}. With no home equity to fall back on, this scenario leads to genuine insolvency.
-            </p>
+            <div className="text-xs space-y-0.5">
+              <p className="text-red-700">
+                <span className="font-semibold">Rent scenario:</span> liquid savings run out in Year {rentInsolventYear}.
+                Accumulating ~<span className="font-semibold">{formatDollarFull(Math.abs(rentMonthlySurplus))}/mo in debt</span> after that point — with no home equity to offset it, this leads to genuine negative net worth.
+              </p>
+              {rentFinalPortfolio < 0 && (
+                <p className="font-semibold text-red-700">Total debt by Year {horizonYears}: {formatDollarFull(Math.abs(rentFinalPortfolio))}</p>
+              )}
+            </div>
           )}
           {(buyFullyInsolvent || rentFullyInsolvent) && (
-            <p className="text-xs text-red-700 font-semibold">
-              One or more scenarios result in negative total net worth. Reduce purchase price, increase income, or lower expenses.
+            <p className="text-xs text-red-700 font-semibold border-t border-red-200 pt-2">
+              Total net worth goes negative — this scenario is not sustainable. Increase income, reduce purchase price, or lower monthly expenses.
             </p>
           )}
         </div>
