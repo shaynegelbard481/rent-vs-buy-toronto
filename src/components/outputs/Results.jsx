@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  Legend, ResponsiveContainer, ReferenceLine, BarChart, Bar
+  Legend, ResponsiveContainer, ReferenceLine, BarChart, Bar, LabelList,
 } from 'recharts';
 
 function formatDollar(v) {
@@ -15,8 +15,8 @@ function formatDollarFull(v) {
 }
 
 const COLORS = {
-  buy: '#6366f1',   // indigo
-  rent: '#10b981',  // emerald
+  buy: '#6366f1',
+  rent: '#10b981',
   equity: '#818cf8',
   portfolio: '#34d399',
 };
@@ -93,24 +93,8 @@ export function NetWorthChart({ chartData, breakEvenYear }) {
               label={{ value: 'Break-even', position: 'top', fontSize: 11, fill: '#94a3b8' }}
             />
           )}
-          <Line
-            type="monotone"
-            dataKey="buyNetWorth"
-            name="Buy"
-            stroke={COLORS.buy}
-            strokeWidth={2.5}
-            dot={false}
-            activeDot={{ r: 5 }}
-          />
-          <Line
-            type="monotone"
-            dataKey="rentNetWorth"
-            name="Rent"
-            stroke={COLORS.rent}
-            strokeWidth={2.5}
-            dot={false}
-            activeDot={{ r: 5 }}
-          />
+          <Line type="monotone" dataKey="buyNetWorth" name="Buy" stroke={COLORS.buy} strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+          <Line type="monotone" dataKey="rentNetWorth" name="Rent" stroke={COLORS.rent} strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -119,7 +103,32 @@ export function NetWorthChart({ chartData, breakEvenYear }) {
 
 // ─── Monthly cash flow comparison ────────────────────────────────────────────
 
-export function CashFlowCard({ buySnapshot, rentSnapshot }) {
+function AffordabilityLabel({ surplus, monthlyIncome }) {
+  if (surplus >= 0) {
+    return (
+      <p className="text-xs mt-1 font-medium text-emerald-600">
+        +{formatDollarFull(surplus)}/mo surplus invested
+      </p>
+    );
+  }
+  const shortfall = Math.abs(surplus);
+  // Flag severity: if shortfall > 30% of income, it's a real problem
+  const severe = monthlyIncome > 0 && shortfall > monthlyIncome * 0.3;
+  return (
+    <div className={`mt-2 rounded-lg px-3 py-2 text-xs ${severe ? 'bg-red-100 border border-red-300' : 'bg-amber-50 border border-amber-200'}`}>
+      <p className={`font-semibold ${severe ? 'text-red-700' : 'text-amber-700'}`}>
+        {formatDollarFull(shortfall)}/mo gap
+      </p>
+      <p className={`mt-0.5 ${severe ? 'text-red-600' : 'text-amber-600'}`}>
+        {severe
+          ? 'This exceeds 30% of your income — this scenario may not be affordable without drawing down savings.'
+          : 'Your investment portfolio would need to cover this gap each month.'}
+      </p>
+    </div>
+  );
+}
+
+export function CashFlowCard({ buySnapshot, rentSnapshot, monthlyIncome }) {
   const buyHousing = buySnapshot.monthlyHousingCost;
   const rentHousing = rentSnapshot.monthlyHousingCost;
   const delta = buyHousing - rentHousing;
@@ -131,19 +140,19 @@ export function CashFlowCard({ buySnapshot, rentSnapshot }) {
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-indigo-50 rounded-xl p-4">
           <p className="text-xs text-indigo-600 font-medium mb-1">Buy</p>
-          <p className="text-2xl font-bold text-indigo-700">{formatDollarFull(buyHousing)}<span className="text-sm font-normal">/mo</span></p>
-          <p className="text-xs text-slate-500 mt-2">Mortgage + property tax + maintenance + insurance + utilities</p>
-          <p className={`text-xs mt-1 font-medium ${buySnapshot.monthlySurplus >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-            {buySnapshot.monthlySurplus >= 0 ? `+${formatDollarFull(buySnapshot.monthlySurplus)} surplus invested` : `${formatDollarFull(buySnapshot.monthlySurplus)} monthly shortfall`}
+          <p className="text-2xl font-bold text-indigo-700">
+            {formatDollarFull(buyHousing)}<span className="text-sm font-normal">/mo</span>
           </p>
+          <p className="text-xs text-slate-500 mt-2">Mortgage + tax + maintenance + insurance + utilities</p>
+          <AffordabilityLabel surplus={buySnapshot.monthlySurplus} monthlyIncome={monthlyIncome} />
         </div>
         <div className="bg-emerald-50 rounded-xl p-4">
           <p className="text-xs text-emerald-600 font-medium mb-1">Rent</p>
-          <p className="text-2xl font-bold text-emerald-700">{formatDollarFull(rentHousing)}<span className="text-sm font-normal">/mo</span></p>
-          <p className="text-xs text-slate-500 mt-2">Rent + utilities</p>
-          <p className={`text-xs mt-1 font-medium ${rentSnapshot.monthlySurplus >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-            {rentSnapshot.monthlySurplus >= 0 ? `+${formatDollarFull(rentSnapshot.monthlySurplus)} surplus invested` : `${formatDollarFull(rentSnapshot.monthlySurplus)} monthly shortfall`}
+          <p className="text-2xl font-bold text-emerald-700">
+            {formatDollarFull(rentHousing)}<span className="text-sm font-normal">/mo</span>
           </p>
+          <p className="text-xs text-slate-500 mt-2">Rent + utilities</p>
+          <AffordabilityLabel surplus={rentSnapshot.monthlySurplus} monthlyIncome={monthlyIncome} />
         </div>
       </div>
       {delta !== 0 && (
@@ -155,47 +164,82 @@ export function CashFlowCard({ buySnapshot, rentSnapshot }) {
   );
 }
 
-// ─── Wealth composition chart ─────────────────────────────────────────────────
+// ─── Wealth composition chart with data labels ────────────────────────────────
+
+const BarLabel = ({ x, y, width, value }) => {
+  if (!value || value < 50000) return null;
+  return (
+    <text x={x + width / 2} y={y - 4} fill="#475569" fontSize={10} textAnchor="middle">
+      {formatDollar(value)}
+    </text>
+  );
+};
 
 export function WealthCompositionChart({ chartData }) {
+  const filtered = chartData.filter((_, i) => i % 2 === 1 || i === 0);
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
       <h3 className="font-semibold text-slate-900 mb-1">Wealth Composition</h3>
       <p className="text-xs text-slate-400 mb-4">Buy scenario: home equity vs. investment portfolio</p>
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={chartData.filter((_, i) => i % 2 === 1 || i === 0)} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+      <ResponsiveContainer width="100%" height={280}>
+        <BarChart data={filtered} margin={{ top: 20, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis dataKey="year" tick={{ fontSize: 12 }} />
           <YAxis tickFormatter={formatDollar} tick={{ fontSize: 12 }} width={70} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
-          <Bar dataKey="buyEquity" name="Home equity (net)" stackId="buy" fill={COLORS.equity} radius={[0,0,0,0]} />
-          <Bar dataKey="buyPortfolio" name="Investment portfolio" stackId="buy" fill={COLORS.buy} radius={[4,4,0,0]} />
+          <Bar dataKey="buyEquity" name="Home equity (net)" stackId="buy" fill={COLORS.equity}>
+            <LabelList content={<BarLabel />} position="top" />
+          </Bar>
+          <Bar dataKey="buyPortfolio" name="Investment portfolio" stackId="buy" fill={COLORS.buy} radius={[4, 4, 0, 0]}>
+            <LabelList content={<BarLabel />} position="top" />
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-// ─── Year-by-year table ───────────────────────────────────────────────────────
+// ─── Year-by-year table with download button ──────────────────────────────────
 
 export function DetailTable({ buySnapshots, rentSnapshots }) {
   const [open, setOpen] = React.useState(false);
+  const [downloadTooltip, setDownloadTooltip] = React.useState(false);
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors"
-      >
-        <span className="font-semibold text-slate-900">Year-by-Year Breakdown</span>
-        <svg className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
+      <div className="flex items-center justify-between px-6 py-4">
+        <button
+          onClick={() => setOpen(o => !o)}
+          className="flex items-center gap-2 hover:text-indigo-600 transition-colors"
+        >
+          <span className="font-semibold text-slate-900">Year-by-Year Breakdown</span>
+          <svg className={`w-4 h-4 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+        <div className="relative">
+          <button
+            onMouseEnter={() => setDownloadTooltip(true)}
+            onMouseLeave={() => setDownloadTooltip(false)}
+            className="flex items-center gap-1.5 text-xs text-slate-400 border border-slate-200 rounded-lg px-3 py-1.5 hover:border-slate-300 transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download CSV
+          </button>
+          {downloadTooltip && (
+            <div className="absolute right-0 top-8 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap z-10">
+              Export coming in v2.0
+            </div>
+          )}
+        </div>
+      </div>
       {open && (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto border-t border-slate-100">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-t border-b border-slate-200">
+            <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
                 {['Year', 'Buy NW', 'Rent NW', 'Delta', 'Buy Housing/mo', 'Rent Housing/mo', 'Home Value', 'Mortgage Balance'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500">{h}</th>

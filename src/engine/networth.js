@@ -60,9 +60,20 @@ export function projectBuyScenario(params, cityConfig) {
     utilityBuyMonthly,
     renovationBudget,
     renovationValueAddPct,
-    renovationYear,
+    renovationSplit,
     horizonYears,
   } = params;
+
+  // Build per-year renovation spend from split array
+  const renovSplit = (renovationSplit && renovationSplit.length > 0)
+    ? renovationSplit
+    : [{ year: 1, pct: 100 }];
+  const renovByYear = {};
+  if (renovationBudget > 0) {
+    renovSplit.forEach(({ year, pct }) => {
+      renovByYear[year] = (renovByYear[year] || 0) + renovationBudget * (pct / 100);
+    });
+  }
 
   const downPayment = purchasePrice * downPaymentPct;
   const cmhc = cityConfig.cmhcInsurance(purchasePrice, downPaymentPct);
@@ -90,12 +101,11 @@ export function projectBuyScenario(params, cityConfig) {
     // Home value with appreciation
     let homeValue = purchasePrice * Math.pow(1 + appreciationRate, year);
 
-    // Renovation value-add (applied after renovationYear)
-    let renovationEquity = 0;
-    if (renovationBudget > 0 && year >= (renovationYear || 1)) {
-      renovationEquity = renovationBudget * (renovationValueAddPct / 100);
-      homeValue += renovationEquity;
-    }
+    // Renovation value-add: cumulative across all years spent so far
+    let cumulativeRenovSpend = 0;
+    for (let y = 1; y <= year; y++) cumulativeRenovSpend += (renovByYear[y] || 0);
+    const renovationEquity = cumulativeRenovSpend * (renovationValueAddPct / 100);
+    if (renovationBudget > 0) homeValue += renovationEquity;
 
     // Mortgage balance
     const mortgageBalance = remainingBalance(loanAmount, mortgageRate, amortizationYears, months);
@@ -136,8 +146,7 @@ export function projectBuyScenario(params, cityConfig) {
     // Total cash spent on housing over this period
     const totalMortgagePaid = mortgagePayment * months;
     const totalOngoingPaid = totalAnnualOngoing * year;
-    const totalHousingCash = closingCosts + downPayment + totalMortgagePaid + totalOngoingPaid +
-      (renovationBudget > 0 && year >= (renovationYear || 1) ? renovationBudget : 0);
+    const totalHousingCash = closingCosts + downPayment + totalMortgagePaid + totalOngoingPaid + cumulativeRenovSpend;
 
     snapshots.push({
       year,

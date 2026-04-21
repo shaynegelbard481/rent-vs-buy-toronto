@@ -3,7 +3,11 @@
     "allow": [
       "Bash(git --version)",
       "Bash(gh auth *)",
-      "Bash(export PATH=\"/opt/homebrew/bin:$PATH\")"
+      "Bash(export PATH=\"/opt/homebrew/bin:$PATH\")",
+      "Bash(gh repo *)",
+      "Bash(gh issue *)",
+      "Bash(gh label *)",
+      "Bash(gh project *)"
     ]
   }
 }

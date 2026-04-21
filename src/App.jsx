@@ -5,16 +5,14 @@ import { BaseProfileInputs, BuyScenarioInputs, RentScenarioInputs } from './comp
 import { HeadlineCard, NetWorthChart, CashFlowCard, WealthCompositionChart, DetailTable } from './components/outputs/Results.jsx';
 import { Commentary } from './components/outputs/Commentary.jsx';
 
-// ─── Default state ────────────────────────────────────────────────────────────
-
 const DEFAULT_PROFILE = {
-  liquidAssets: 300000,
-  monthlyIncome: 10000,
+  annualSalary: 150000,
+  monthlyIncome: Math.round((150000 * (1 - 0.43)) / 12),
   monthlyExpenses: 3500,
   marginalRate: 0.43,
-  accountType: 'tfsa',
   portfolioReturn: 0.07,
   horizonYears: 10,
+  liquidAssets: 300000,
 };
 
 const DEFAULT_BUY = {
@@ -27,7 +25,7 @@ const DEFAULT_BUY = {
   utilityBuyMonthly: toronto.buyUtilitiesMonthly,
   renovationBudget: 0,
   renovationValueAddPct: 75,
-  renovationYear: 1,
+  renovationSplit: [{ year: 1, pct: 100 }],
 };
 
 const DEFAULT_RENT = {
@@ -36,35 +34,28 @@ const DEFAULT_RENT = {
   utilityRentMonthly: toronto.rentUtilitiesMonthly,
 };
 
-// ─── App ──────────────────────────────────────────────────────────────────────
-
 export default function App() {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [buy, setBuy] = useState(DEFAULT_BUY);
   const [rent, setRent] = useState(DEFAULT_RENT);
 
-  // Merge all params for engine calls
-  const buyParams = useMemo(() => ({ ...profile, ...buy, ...rent }), [profile, buy, rent]);
-  const rentParams = useMemo(() => ({ ...profile, ...buy, ...rent }), [profile, buy, rent]);
+  const params = useMemo(() => ({ ...profile, ...buy, ...rent }), [profile, buy, rent]);
 
-  const buySnapshots = useMemo(() => projectBuyScenario(buyParams, toronto), [buyParams]);
-  const rentSnapshots = useMemo(() => projectRentScenario(rentParams, toronto), [rentParams]);
+  const buySnapshots = useMemo(() => projectBuyScenario(params, toronto), [params]);
+  const rentSnapshots = useMemo(() => projectRentScenario(params, toronto), [params]);
   const chartData = useMemo(() => buildChartData(buySnapshots, rentSnapshots), [buySnapshots, rentSnapshots]);
   const breakEvenYear = useMemo(() => findBreakEven(buySnapshots, rentSnapshots), [buySnapshots, rentSnapshots]);
 
   const buyFinal = buySnapshots[buySnapshots.length - 1]?.totalNetWorth ?? 0;
   const rentFinal = rentSnapshots[rentSnapshots.length - 1]?.totalNetWorth ?? 0;
 
-  const allParams = { profile, buy, rent };
-
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-slate-900">Rent vs. Buy</h1>
-            <p className="text-xs text-slate-400">Toronto · 10-year net worth planner</p>
+            <p className="text-xs text-slate-400">Toronto · net worth planner</p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
             <svg className="w-3.5 h-3.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -78,13 +69,11 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-8 items-start">
 
-          {/* ── Left: Inputs ──────────────────────────────────────────────── */}
           <div className="flex flex-col gap-5">
             <BaseProfileInputs profile={profile} onChange={setProfile} />
             <BuyScenarioInputs buy={buy} onChange={setBuy} cityConfig={toronto} />
             <RentScenarioInputs rent={rent} onChange={setRent} cityConfig={toronto} />
 
-            {/* City notes */}
             <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
               <p className="text-xs font-semibold text-blue-700 mb-2">Toronto Notes</p>
               <ul className="space-y-1">
@@ -98,7 +87,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* ── Right: Results ─────────────────────────────────────────────── */}
           <div className="flex flex-col gap-5">
             <HeadlineCard
               buyFinal={buyFinal}
@@ -110,12 +98,16 @@ export default function App() {
             <NetWorthChart chartData={chartData} breakEvenYear={breakEvenYear} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <CashFlowCard buySnapshot={buySnapshots[0]} rentSnapshot={rentSnapshots[0]} />
+              <CashFlowCard
+                buySnapshot={buySnapshots[0]}
+                rentSnapshot={rentSnapshots[0]}
+                monthlyIncome={profile.monthlyIncome}
+              />
               <WealthCompositionChart chartData={chartData} />
             </div>
 
             <Commentary
-              params={allParams}
+              params={{ profile, buy, rent }}
               buySnapshots={buySnapshots}
               rentSnapshots={rentSnapshots}
               breakEvenYear={breakEvenYear}

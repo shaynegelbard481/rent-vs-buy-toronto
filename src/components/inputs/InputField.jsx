@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
+// Controlled text input that stores a raw string while editing,
+// committing the parsed number to onChange only on blur.
+// This prevents leading-zero issues and allows natural typing.
 export function InputField({
   label,
   value,
@@ -12,7 +15,53 @@ export function InputField({
   step,
   helper,
   placeholder,
+  decimals = 0,
 }) {
+  const [raw, setRaw] = useState('');
+  const [focused, setFocused] = useState(false);
+
+  // Sync external value → display when not focused
+  useEffect(() => {
+    if (!focused) {
+      if (type === 'number') {
+        setRaw(decimals > 0 ? Number(value).toFixed(decimals) : String(value ?? ''));
+      } else {
+        setRaw(String(value ?? ''));
+      }
+    }
+  }, [value, focused, type, decimals]);
+
+  function handleFocus() {
+    setFocused(true);
+    // Show plain number while editing (no commas)
+    setRaw(type === 'number' ? String(value ?? '') : String(value ?? ''));
+  }
+
+  function handleChange(e) {
+    setRaw(e.target.value);
+  }
+
+  function handleBlur() {
+    setFocused(false);
+    if (type === 'number') {
+      const parsed = parseFloat(raw.replace(/,/g, ''));
+      const clamped = isNaN(parsed) ? (min ?? 0) : Math.min(Math.max(parsed, min ?? -Infinity), max ?? Infinity);
+      onChange(clamped);
+      setRaw(decimals > 0 ? clamped.toFixed(decimals) : String(clamped));
+    } else {
+      onChange(raw);
+    }
+  }
+
+  // Display value with comma formatting when not focused
+  const displayValue = focused
+    ? raw
+    : type === 'number'
+      ? (decimals > 0
+          ? Number(value).toFixed(decimals)
+          : Number(value).toLocaleString('en-CA', { maximumFractionDigits: 0 }))
+      : raw;
+
   return (
     <div className="flex flex-col gap-1">
       <label className="text-sm font-medium text-slate-700">{label}</label>
@@ -23,12 +72,12 @@ export function InputField({
           </span>
         )}
         <input
-          type={type}
-          value={value}
-          onChange={e => onChange(type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)}
-          min={min}
-          max={max}
-          step={step}
+          type="text"
+          inputMode={type === 'number' ? 'decimal' : 'text'}
+          value={displayValue}
+          onChange={handleChange}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
           placeholder={placeholder}
           className="flex-1 px-3 py-2.5 text-sm text-slate-900 bg-transparent outline-none rounded-lg"
         />
@@ -95,7 +144,7 @@ export function SectionCard({ title, subtitle, children, accent }) {
     orange: 'border-l-orange-500',
   };
   return (
-    <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden`}>
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
       <div className={`border-l-4 ${accentClasses[accent] || 'border-l-indigo-500'} px-6 py-4 border-b border-slate-100`}>
         <h3 className="font-semibold text-slate-900 text-base">{title}</h3>
         {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}

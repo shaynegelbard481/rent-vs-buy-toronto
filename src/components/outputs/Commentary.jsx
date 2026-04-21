@@ -1,146 +1,131 @@
 import React, { useState } from 'react';
 
-function buildPrompt({ buyFinal, rentFinal, breakEvenYear, horizonYears, buySnapshot1, rentSnapshot1, params }) {
-  const buyWins = buyFinal > rentFinal;
-  const delta = Math.abs(buyFinal - rentFinal).toLocaleString();
-  const winner = buyWins ? 'buying' : 'renting';
-
-  return `You are a sharp, direct financial advisor — think "smart friend who happens to be a CFA."
-A user in Toronto is deciding whether to rent or buy a home. Here are their numbers:
-
-SCENARIO SUMMARY (${horizonYears}-year horizon):
-- Purchase price: $${params.buy.purchasePrice.toLocaleString()}
-- Down payment: ${(params.buy.downPaymentPct * 100).toFixed(0)}% ($${Math.round(params.buy.purchasePrice * params.buy.downPaymentPct).toLocaleString()})
-- Mortgage rate: ${(params.buy.mortgageRate * 100).toFixed(2)}%
-- Home appreciation assumed: ${(params.buy.appreciationRate * 100).toFixed(1)}%/yr
-- Monthly rent alternative: $${params.rent.monthlyRent.toLocaleString()}
-- Liquid assets: $${params.profile.liquidAssets.toLocaleString()}
-- Portfolio return assumed: ${(params.profile.portfolioReturn * 100).toFixed(1)}%/yr
-- Marginal tax rate: ${(params.profile.marginalRate * 100).toFixed(0)}%
-
-RESULTS:
-- ${horizonYears}-year net worth if buying: $${Math.round(buyFinal).toLocaleString()}
-- ${horizonYears}-year net worth if renting: $${Math.round(rentFinal).toLocaleString()}
-- Winner: ${winner} by $${delta}
-- Break-even year: ${breakEvenYear ? `Year ${breakEvenYear}` : `Does not break even within ${horizonYears} years`}
-- Year 1 monthly housing cost (buy): $${buySnapshot1.monthlyHousingCost.toLocaleString()}
-- Year 1 monthly housing cost (rent): $${rentSnapshot1.monthlyHousingCost.toLocaleString()}
-
-Write 3–4 sentences of plain-English commentary:
-1. Lead with the headline insight — what does the result actually mean for this person?
-2. Name the single biggest risk factor or assumption driving the outcome.
-3. Name one concrete thing they should dig into further or stress-test.
-Keep it direct, specific to their numbers, and zero financial disclaimer boilerplate. No bullet points — flowing prose only.`;
+function formatDollar(v) {
+  if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(0)}K`;
+  return `$${Math.round(v)}`;
 }
 
-export function Commentary({ params, buySnapshots, rentSnapshots, breakEvenYear, apiKey }) {
-  const [commentary, setCommentary] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [localApiKey, setLocalApiKey] = useState(apiKey || '');
-  const [showKeyInput, setShowKeyInput] = useState(!apiKey);
+function generateCommentary({ buyFinal, rentFinal, breakEvenYear, horizonYears, buySnapshot1, rentSnapshot1, params }) {
+  const buyWins = buyFinal > rentFinal;
+  const delta = Math.abs(buyFinal - rentFinal);
+  const winner = buyWins ? 'buying' : 'renting';
+  const loser = buyWins ? 'renting' : 'buying';
+  const monthlyCostDelta = buySnapshot1.monthlyHousingCost - rentSnapshot1.monthlyHousingCost;
+  const appreciationRate = params.buy.appreciationRate * 100;
+  const portfolioReturn = params.profile.portfolioReturn * 100;
+  const downPayment = params.buy.purchasePrice * params.buy.downPaymentPct;
 
-  const buyFinal = buySnapshots[buySnapshots.length - 1]?.totalNetWorth;
-  const rentFinal = rentSnapshots[rentSnapshots.length - 1]?.totalNetWorth;
+  const sentences = [];
 
-  async function generate() {
-    if (!localApiKey) { setShowKeyInput(true); return; }
-    setLoading(true);
-    setError('');
-    setCommentary('');
+  // Sentence 1: headline
+  if (buyWins) {
+    sentences.push(
+      breakEvenYear && breakEvenYear <= horizonYears
+        ? `Buying comes out ahead by ${formatDollar(delta)} over ${horizonYears} years, with the break-even point arriving in Year ${breakEvenYear} — after which your home equity starts pulling ahead of a pure investment portfolio.`
+        : `Buying edges out renting by ${formatDollar(delta)} over ${horizonYears} years, though the break-even point falls outside this horizon — meaning the advantage is driven primarily by home appreciation rather than early equity buildup.`
+    );
+  } else {
+    sentences.push(
+      `Renting and keeping your capital invested comes out ahead by ${formatDollar(delta)} over ${horizonYears} years — your ${formatDollar(downPayment)} down payment compounds more powerfully in the market than it does locked in home equity${breakEvenYear ? `, and buying never catches up within this horizon` : ''}.`
+    );
+  }
 
-    const prompt = buildPrompt({
-      buyFinal, rentFinal, breakEvenYear,
-      horizonYears: params.profile.horizonYears,
-      buySnapshot1: buySnapshots[0],
-      rentSnapshot1: rentSnapshots[0],
-      params,
-    });
+  // Sentence 2: key driver
+  if (monthlyCostDelta > 500) {
+    sentences.push(
+      `The biggest drag on the buy scenario is monthly cash flow — at ${formatDollar(monthlyCostDelta)}/mo more than renting in Year 1, that differential compounds significantly over time when invested in your portfolio instead.`
+    );
+  } else if (appreciationRate >= portfolioReturn) {
+    sentences.push(
+      `The primary driver here is that your assumed home appreciation (${appreciationRate.toFixed(1)}%) is close to or exceeds your portfolio return (${portfolioReturn.toFixed(1)}%), which is the condition under which buying tends to win.`
+    );
+  } else {
+    sentences.push(
+      `The key factor is the opportunity cost of your down payment — at a ${portfolioReturn.toFixed(1)}% portfolio return vs. ${appreciationRate.toFixed(1)}% home appreciation, the market compounds your capital faster than real estate does in this scenario.`
+    );
+  }
 
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': localApiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-haiku-4-5',
-          max_tokens: 400,
-          messages: [{ role: 'user', content: prompt }],
-        }),
-      });
+  // Sentence 3: biggest risk / assumption to stress-test
+  if (!buyWins && appreciationRate < 5) {
+    sentences.push(
+      `The most important assumption to stress-test is home appreciation — Toronto has averaged 6–8% in strong years. At ${(appreciationRate + 2).toFixed(1)}% appreciation instead of ${appreciationRate.toFixed(1)}%, the outcome could flip. Use the sensitivity sliders (coming in v2.0) to explore this range.`
+    );
+  } else if (buyWins && params.buy.mortgageRate > 0.06) {
+    sentences.push(
+      `With mortgage rates at ${(params.buy.mortgageRate * 100).toFixed(2)}%, your biggest risk is rate sensitivity — if rates stay elevated at renewal, monthly costs increase and the break-even year shifts later. Model a 1% rate increase to see the impact.`
+    );
+  } else {
+    sentences.push(
+      `The result is sensitive to your portfolio return assumption — a 1% change in either direction shifts the ${horizonYears}-year outcome meaningfully. If your investments underperform, ${winner} looks better; if they outperform, ${loser} closes the gap.`
+    );
+  }
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || `API error ${res.status}`);
-      }
+  return sentences.join(' ');
+}
 
-      const data = await res.json();
-      setCommentary(data.content[0].text);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
+export function Commentary({ params, buySnapshots, rentSnapshots, breakEvenYear }) {
+  const [question, setQuestion] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+
+  const buyFinal = buySnapshots[buySnapshots.length - 1]?.totalNetWorth ?? 0;
+  const rentFinal = rentSnapshots[rentSnapshots.length - 1]?.totalNetWorth ?? 0;
+
+  const commentary = generateCommentary({
+    buyFinal,
+    rentFinal,
+    breakEvenYear,
+    horizonYears: params.profile.horizonYears,
+    buySnapshot1: buySnapshots[0],
+    rentSnapshot1: rentSnapshots[0],
+    params,
+  });
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (question.trim()) setSubmitted(true);
   }
 
   return (
     <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white shadow-lg">
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-4">
         <div className="w-6 h-6 rounded-full bg-indigo-400 flex items-center justify-center text-xs font-bold">AI</div>
-        <h3 className="font-semibold text-slate-100">Advisor Commentary</h3>
+        <h3 className="font-semibold text-slate-100">Scenario Analysis</h3>
       </div>
 
-      {showKeyInput && !commentary && (
-        <div className="mb-4">
-          <p className="text-slate-300 text-sm mb-2">Enter your Anthropic API key to generate personalized commentary:</p>
-          <div className="flex gap-2">
+      <p className="text-slate-200 leading-relaxed text-sm mb-6">{commentary}</p>
+
+      <div className="border-t border-slate-700 pt-4">
+        <p className="text-xs text-slate-400 mb-2">Have a specific question about your scenario?</p>
+        {!submitted ? (
+          <form onSubmit={handleSubmit} className="flex gap-2">
             <input
-              type="password"
-              value={localApiKey}
-              onChange={e => setLocalApiKey(e.target.value)}
-              placeholder="sk-ant-..."
+              type="text"
+              value={question}
+              onChange={e => setQuestion(e.target.value)}
+              placeholder="e.g. What if I wait 2 years to buy?"
               className="flex-1 px-3 py-2 rounded-lg bg-slate-700 border border-slate-600 text-sm text-white placeholder-slate-400 outline-none focus:border-indigo-400"
             />
             <button
-              onClick={() => setShowKeyInput(false)}
-              className="px-4 py-2 bg-slate-600 rounded-lg text-sm hover:bg-slate-500 transition-colors"
+              type="submit"
+              className="px-4 py-2 bg-indigo-500 hover:bg-indigo-400 rounded-lg text-sm font-medium transition-colors"
             >
-              Save
+              Ask
+            </button>
+          </form>
+        ) : (
+          <div className="bg-slate-700 rounded-lg px-4 py-3 text-sm text-slate-300">
+            <p className="text-slate-400 text-xs mb-1">Your question: <span className="italic">{question}</span></p>
+            <p>AI-based commentary coming in v2.0 — stay tuned.</p>
+            <button
+              onClick={() => { setSubmitted(false); setQuestion(''); }}
+              className="text-xs text-indigo-400 hover:text-indigo-300 mt-2"
+            >
+              Ask another question
             </button>
           </div>
-          <p className="text-xs text-slate-500 mt-1">Your key stays in-browser and is never stored or sent anywhere except the Anthropic API.</p>
-        </div>
-      )}
-
-      {commentary ? (
-        <p className="text-slate-200 leading-relaxed text-sm">{commentary}</p>
-      ) : (
-        <p className="text-slate-400 text-sm italic mb-4">
-          Get a plain-English summary of what these numbers mean for your specific situation.
-        </p>
-      )}
-
-      {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
-
-      <button
-        onClick={generate}
-        disabled={loading}
-        className="mt-4 px-5 py-2.5 bg-indigo-500 hover:bg-indigo-400 disabled:opacity-50 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
-      >
-        {loading ? (
-          <>
-            <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-            Analyzing...
-          </>
-        ) : commentary ? 'Regenerate' : 'Generate Analysis'}
-      </button>
+        )}
+      </div>
     </div>
   );
 }
