@@ -54,7 +54,7 @@ export function BaseProfileInputs({ profile, onChange }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
       <div className="border-l-4 border-l-purple-500 px-6 py-4 border-b border-slate-100">
         <h3 className="font-semibold text-slate-900 text-base">Your Financial Profile</h3>
         <p className="text-xs text-slate-500 mt-0.5">Starting point for both scenarios</p>
@@ -129,33 +129,35 @@ export function BaseProfileInputs({ profile, onChange }) {
               helper="TFSA + RRSP + taxable accounts combined"
             />
           ) : (
-            <div className="grid grid-cols-3 gap-3">
-              <InputField
-                label="TFSA"
-                value={profile.tfsaBalance || 0}
-                onChange={v => setRefinedField('tfsaBalance', v)}
-                prefix="$"
-                helper="Tax-free growth"
-              />
-              <InputField
-                label="RRSP"
-                value={profile.rrspBalance || 0}
-                onChange={v => setRefinedField('rrspBalance', v)}
-                prefix="$"
-                helper="Tax-deferred"
-              />
-              <InputField
-                label="Taxable"
-                value={profile.taxableBalance || 0}
-                onChange={v => setRefinedField('taxableBalance', v)}
-                prefix="$"
-                helper="Capital gains apply"
-              />
-              <div className="col-span-3 bg-slate-50 rounded-lg px-4 py-2.5 flex justify-between items-center text-sm">
+            <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-3 gap-2">
+                <InputField
+                  label="TFSA"
+                  value={profile.tfsaBalance || 0}
+                  onChange={v => setRefinedField('tfsaBalance', v)}
+                  prefix="$"
+                  helper="Tax-free"
+                />
+                <InputField
+                  label="RRSP"
+                  value={profile.rrspBalance || 0}
+                  onChange={v => setRefinedField('rrspBalance', v)}
+                  prefix="$"
+                  helper="Tax-deferred"
+                />
+                <InputField
+                  label="Taxable"
+                  value={profile.taxableBalance || 0}
+                  onChange={v => setRefinedField('taxableBalance', v)}
+                  prefix="$"
+                  helper="Cap. gains"
+                />
+              </div>
+              <div className="bg-slate-50 rounded-lg px-4 py-2.5 flex justify-between items-center text-sm">
                 <span className="text-slate-500">Total liquid assets</span>
                 <span className="font-semibold text-slate-800">${totalRefined.toLocaleString()}</span>
               </div>
-              <div className="col-span-3 bg-indigo-50 rounded-lg px-4 py-2.5 flex justify-between items-center text-sm">
+              <div className="bg-indigo-50 rounded-lg px-4 py-2.5 flex justify-between items-center text-sm">
                 <span className="text-indigo-700">Computed blended tax rate</span>
                 <span className="font-semibold text-indigo-700">{(computedBlendedRate * 100).toFixed(1)}%</span>
               </div>

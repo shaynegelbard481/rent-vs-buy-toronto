@@ -69,7 +69,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-8 items-start">
 
-          <div className="flex flex-col gap-5">
+          <div className="flex flex-col gap-5 min-w-0">
             <BaseProfileInputs profile={profile} onChange={setProfile} />
             <BuyScenarioInputs buy={buy} onChange={setBuy} cityConfig={toronto} />
             <RentScenarioInputs rent={rent} onChange={setRent} cityConfig={toronto} />
