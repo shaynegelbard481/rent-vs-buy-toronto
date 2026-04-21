@@ -99,14 +99,15 @@ export default function App() {
 
             <NetWorthChart chartData={chartData} breakEvenYear={breakEvenYear} />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <CashFlowCard
-                buySnapshot={buySnapshots[0]}
-                rentSnapshot={rentSnapshots[0]}
-                monthlyIncome={profile.monthlyIncome}
-              />
-              <WealthCompositionChart chartData={chartData} />
-            </div>
+            <CashFlowCard
+              buySnapshot={buySnapshots[0]}
+              rentSnapshot={rentSnapshots[0]}
+              monthlyIncome={profile.monthlyIncome}
+              monthlyExpenses={profile.monthlyExpenses}
+              annualSalary={profile.annualSalary}
+              marginalRate={profile.marginalRate}
+            />
+            <WealthCompositionChart chartData={chartData} />
 
             <Commentary
               params={{ profile, buy, rent }}

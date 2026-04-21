@@ -139,6 +139,13 @@ export function projectBuyScenario(params, cityConfig) {
       monthlyHousingCost: Math.round(monthlyHousingCost),
       monthlySurplus: Math.round(monthlySurplus),
       totalHousingCash: Math.round(totalHousingCash),
+      // Detailed cost breakdown for cash flow card
+      mortgagePaymentMonthly: Math.round(mortgagePayment),
+      propertyTaxMonthly: Math.round(annualPropertyTax / 12),
+      maintenanceMonthly: Math.round(annualMaintenance / 12),
+      insuranceMonthly: Math.round(annualInsurance / 12),
+      condoFeesMonthly: Math.round(annualCondo / 12),
+      utilityMonthly: Math.round(annualUtilities / 12),
       annualPropertyTax: Math.round(annualPropertyTax),
       annualMaintenance: Math.round(annualMaintenance),
       sellingCosts: Math.round(sellingCosts),

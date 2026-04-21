@@ -170,61 +170,84 @@ export function NetWorthChart({ chartData, breakEvenYear }) {
 
 // ─── Monthly cash flow comparison ────────────────────────────────────────────
 
-function AffordabilityLabel({ surplus, monthlyIncome }) {
-  if (surplus >= 0) {
-    return (
-      <p className="text-xs mt-1 font-medium text-emerald-600">
-        +{formatDollarFull(surplus)}/mo surplus invested
-      </p>
-    );
-  }
-  const shortfall = Math.abs(surplus);
-  // Flag severity: if shortfall > 30% of income, it's a real problem
-  const severe = monthlyIncome > 0 && shortfall > monthlyIncome * 0.3;
+function Row({ label, value, indent = false, bold = false, positive = false, negative = false, separator = false }) {
+  const valueColor = positive ? 'text-emerald-600' : negative ? 'text-red-500' : 'text-slate-700';
   return (
-    <div className={`mt-2 rounded-lg px-3 py-2 text-xs ${severe ? 'bg-red-100 border border-red-300' : 'bg-amber-50 border border-amber-200'}`}>
-      <p className={`font-semibold ${severe ? 'text-red-700' : 'text-amber-700'}`}>
-        {formatDollarFull(shortfall)}/mo gap
-      </p>
-      <p className={`mt-0.5 ${severe ? 'text-red-600' : 'text-amber-600'}`}>
-        {severe
-          ? 'This exceeds 30% of your income — this scenario may not be affordable without drawing down savings.'
-          : 'Your investment portfolio would need to cover this gap each month.'}
-      </p>
-    </div>
+    <>
+      {separator && <div className="border-t border-slate-200 my-1" />}
+      <div className={`flex justify-between items-center py-0.5 ${indent ? 'pl-3' : ''}`}>
+        <span className={`text-xs ${bold ? 'font-semibold text-slate-800' : 'text-slate-500'}`}>{label}</span>
+        <span className={`text-xs font-medium ${bold ? 'font-semibold' : ''} ${valueColor}`}>{value}</span>
+      </div>
+    </>
   );
 }
 
-export function CashFlowCard({ buySnapshot, rentSnapshot, monthlyIncome }) {
-  const buyHousing = buySnapshot.monthlyHousingCost;
-  const rentHousing = rentSnapshot.monthlyHousingCost;
-  const delta = buyHousing - rentHousing;
+export function CashFlowCard({ buySnapshot, rentSnapshot, monthlyIncome, monthlyExpenses, annualSalary, marginalRate }) {
+  const grossMonthly = annualSalary ? Math.round(annualSalary / 12) : null;
+  const taxMonthly = annualSalary ? Math.round(annualSalary * marginalRate / 12) : null;
+  const buySurplus = buySnapshot.monthlySurplus;
+  const rentSurplus = rentSnapshot.monthlySurplus;
+  const rentUtilities = rentSnapshot.monthlyHousingCost - rentSnapshot.currentYearMonthlyRent;
+  const delta = buySnapshot.monthlyHousingCost - rentSnapshot.monthlyHousingCost;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 col-span-2">
       <h3 className="font-semibold text-slate-900 mb-1">Monthly Cash Flow (Year 1)</h3>
-      <p className="text-xs text-slate-400 mb-4">Total housing outlay per month</p>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-indigo-50 rounded-xl p-4">
-          <p className="text-xs text-indigo-600 font-medium mb-1">Buy</p>
-          <p className="text-2xl font-bold text-indigo-700">
-            {formatDollarFull(buyHousing)}<span className="text-sm font-normal">/mo</span>
-          </p>
-          <p className="text-xs text-slate-500 mt-2">Mortgage + tax + maintenance + insurance + utilities</p>
-          <AffordabilityLabel surplus={buySnapshot.monthlySurplus} monthlyIncome={monthlyIncome} />
+      <p className="text-xs text-slate-400 mb-4">Full income statement — where every dollar goes</p>
+
+      <div className="grid grid-cols-2 gap-8">
+
+        {/* ── Buy ── */}
+        <div>
+          <p className="text-xs font-bold text-indigo-600 uppercase tracking-wide mb-3">Buy</p>
+          <div className="space-y-1">
+            {grossMonthly && <Row label="Gross salary" value={`+${formatDollarFull(grossMonthly)}`} positive />}
+            {taxMonthly   && <Row label="Income tax" value={`−${formatDollarFull(taxMonthly)}`} indent negative />}
+            <Row label="Take-home income" value={`+${formatDollarFull(monthlyIncome)}`} bold positive separator={!!grossMonthly} />
+
+            <Row label="Living expenses" value={`−${formatDollarFull(monthlyExpenses)}`} indent negative />
+            <Row label="Mortgage" value={`−${formatDollarFull(buySnapshot.mortgagePaymentMonthly)}`} indent negative />
+            <Row label="Property tax" value={`−${formatDollarFull(buySnapshot.propertyTaxMonthly)}`} indent negative />
+            <Row label="Maintenance" value={`−${formatDollarFull(buySnapshot.maintenanceMonthly)}`} indent negative />
+            <Row label="Insurance" value={`−${formatDollarFull(buySnapshot.insuranceMonthly)}`} indent negative />
+            {buySnapshot.condoFeesMonthly > 0 && <Row label="Condo fees" value={`−${formatDollarFull(buySnapshot.condoFeesMonthly)}`} indent negative />}
+            <Row label="Utilities" value={`−${formatDollarFull(buySnapshot.utilityMonthly)}`} indent negative />
+
+            <Row separator bold
+              label={buySurplus >= 0 ? 'Surplus → invested' : 'Shortfall → debt'}
+              value={`${buySurplus >= 0 ? '+' : '−'}${formatDollarFull(Math.abs(buySurplus))}`}
+              positive={buySurplus >= 0}
+              negative={buySurplus < 0}
+            />
+          </div>
         </div>
-        <div className="bg-emerald-50 rounded-xl p-4">
-          <p className="text-xs text-emerald-600 font-medium mb-1">Rent</p>
-          <p className="text-2xl font-bold text-emerald-700">
-            {formatDollarFull(rentHousing)}<span className="text-sm font-normal">/mo</span>
-          </p>
-          <p className="text-xs text-slate-500 mt-2">Rent + utilities</p>
-          <AffordabilityLabel surplus={rentSnapshot.monthlySurplus} monthlyIncome={monthlyIncome} />
+
+        {/* ── Rent ── */}
+        <div>
+          <p className="text-xs font-bold text-emerald-600 uppercase tracking-wide mb-3">Rent</p>
+          <div className="space-y-1">
+            {grossMonthly && <Row label="Gross salary" value={`+${formatDollarFull(grossMonthly)}`} positive />}
+            {taxMonthly   && <Row label="Income tax" value={`−${formatDollarFull(taxMonthly)}`} indent negative />}
+            <Row label="Take-home income" value={`+${formatDollarFull(monthlyIncome)}`} bold positive separator={!!grossMonthly} />
+
+            <Row label="Living expenses" value={`−${formatDollarFull(monthlyExpenses)}`} indent negative />
+            <Row label="Rent" value={`−${formatDollarFull(rentSnapshot.currentYearMonthlyRent)}`} indent negative />
+            <Row label="Utilities" value={`−${formatDollarFull(rentUtilities)}`} indent negative />
+
+            <Row separator bold
+              label={rentSurplus >= 0 ? 'Surplus → invested' : 'Shortfall → debt'}
+              value={`${rentSurplus >= 0 ? '+' : '−'}${formatDollarFull(Math.abs(rentSurplus))}`}
+              positive={rentSurplus >= 0}
+              negative={rentSurplus < 0}
+            />
+          </div>
         </div>
       </div>
+
       {delta !== 0 && (
-        <p className="text-sm text-slate-600 mt-4 text-center">
-          Buying costs <span className="font-semibold">{formatDollarFull(Math.abs(delta))}/mo {delta > 0 ? 'more' : 'less'}</span> than renting in Year 1
+        <p className="text-sm text-slate-500 mt-5 pt-4 border-t border-slate-100 text-center">
+          Housing costs <span className="font-semibold text-slate-700">{formatDollarFull(Math.abs(delta))}/mo {delta > 0 ? 'more' : 'less'}</span> to buy than rent in Year 1
         </p>
       )}
     </div>
