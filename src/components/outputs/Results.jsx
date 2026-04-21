@@ -215,7 +215,7 @@ export function CashFlowCard({ buySnapshot, rentSnapshot, monthlyIncome, monthly
             <Row label="Utilities" value={`−${formatDollarFull(buySnapshot.utilityMonthly)}`} indent negative />
 
             <Row separator bold
-              label={buySurplus >= 0 ? 'Surplus → invested' : 'Shortfall → debt'}
+              label={buySurplus >= 0 ? 'Surplus → invested' : buySnapshot.portfolioInsolvent ? 'Shortfall → debt' : 'Shortfall → portfolio drawdown'}
               value={`${buySurplus >= 0 ? '+' : '−'}${formatDollarFull(Math.abs(buySurplus))}`}
               positive={buySurplus >= 0}
               negative={buySurplus < 0}
@@ -236,7 +236,7 @@ export function CashFlowCard({ buySnapshot, rentSnapshot, monthlyIncome, monthly
             <Row label="Utilities" value={`−${formatDollarFull(rentUtilities)}`} indent negative />
 
             <Row separator bold
-              label={rentSurplus >= 0 ? 'Surplus → invested' : 'Shortfall → debt'}
+              label={rentSurplus >= 0 ? 'Surplus → invested' : rentSnapshot.portfolioInsolvent ? 'Shortfall → debt' : 'Shortfall → portfolio drawdown'}
               value={`${rentSurplus >= 0 ? '+' : '−'}${formatDollarFull(Math.abs(rentSurplus))}`}
               positive={rentSurplus >= 0}
               negative={rentSurplus < 0}
