@@ -226,7 +226,7 @@ export function buildChartData(buySnapshots, rentSnapshots) {
     buyMonthlyHousing: b.monthlyHousingCost,
     rentMonthlyHousing: rentSnapshots[i].monthlyHousingCost,
     buyEquity: Math.max(0, b.netEquity),
-    buyPortfolio: b.portfolioAfterTax,
+    buyPortfolio: b.portfolioAfterTax,      // can be negative
     rentPortfolio: rentSnapshots[i].portfolioAfterTax,
     buyInsolvent: b.portfolioInsolvent,
     rentInsolvent: rentSnapshots[i].portfolioInsolvent,

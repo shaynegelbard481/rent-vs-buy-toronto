@@ -39,13 +39,23 @@ export function HeadlineCard({ buyFinal, rentFinal, breakEvenYear, horizonYears,
   return (
     <div className="flex flex-col gap-3">
       {anyInsolvent && (
-        <div className="bg-red-50 border-2 border-red-300 rounded-2xl px-5 py-4">
-          <p className="text-sm font-bold text-red-700 mb-1">⚠ Affordability Warning</p>
-          <p className="text-xs text-red-600">
-            {buyInsolventYear && `Buy scenario: investment portfolio depleted by Year ${buyInsolventYear} — you would need to take on debt or sell assets to continue. `}
-            {rentInsolventYear && `Rent scenario: investment portfolio depleted by Year ${rentInsolventYear}. `}
-            {(buyFullyInsolvent || rentFullyInsolvent) && 'One or both scenarios result in negative net worth. Adjust income, expenses, or purchase price.'}
-          </p>
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl px-5 py-4 space-y-1">
+          <p className="text-sm font-bold text-amber-800">⚠ Liquidity Warning</p>
+          {buyInsolventYear && (
+            <p className="text-xs text-amber-700">
+              <span className="font-semibold">Buy scenario:</span> liquid savings exhausted by Year {buyInsolventYear}. Total net worth stays positive thanks to home equity — but you'd have no cash cushion and would need a HELOC or to sell the home to cover a shortfall.
+            </p>
+          )}
+          {rentInsolventYear && (
+            <p className="text-xs text-amber-700">
+              <span className="font-semibold">Rent scenario:</span> liquid savings exhausted by Year {rentInsolventYear}. With no home equity to fall back on, this scenario leads to genuine insolvency.
+            </p>
+          )}
+          {(buyFullyInsolvent || rentFullyInsolvent) && (
+            <p className="text-xs text-red-700 font-semibold">
+              One or more scenarios result in negative total net worth. Reduce purchase price, increase income, or lower expenses.
+            </p>
+          )}
         </div>
       )}
       <div className={`rounded-2xl border-2 p-6 ${winnerBg}`}>
@@ -92,10 +102,17 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export function NetWorthChart({ chartData, breakEvenYear }) {
+  const portfolioDepletedYear = chartData.find(d => d.buyInsolvent)?.year;
+  const rentDepletedYear = chartData.find(d => d.rentInsolvent)?.year;
+  const showPortfolioLine = portfolioDepletedYear || chartData.some(d => d.buyPortfolio < 0);
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
       <h3 className="font-semibold text-slate-900 mb-1">Net Worth Over Time</h3>
-      <p className="text-xs text-slate-400 mb-4">After-tax, including all costs and selling fees at exit</p>
+      <p className="text-xs text-slate-400 mb-1">After-tax total net worth, including all costs and selling fees at exit</p>
+      {showPortfolioLine && (
+        <p className="text-xs text-amber-600 mb-3">Dashed line shows buy scenario liquid portfolio — when it dips below $0, total net worth is sustained by home equity alone.</p>
+      )}
       <ResponsiveContainer width="100%" height={320}>
         <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
@@ -103,6 +120,7 @@ export function NetWorthChart({ chartData, breakEvenYear }) {
           <YAxis tickFormatter={formatDollar} tick={{ fontSize: 12 }} width={70} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
+          <ReferenceLine y={0} stroke="#e2e8f0" strokeWidth={1} />
           {breakEvenYear && (
             <ReferenceLine
               x={`Yr ${breakEvenYear}`}
@@ -111,8 +129,19 @@ export function NetWorthChart({ chartData, breakEvenYear }) {
               label={{ value: 'Break-even', position: 'top', fontSize: 11, fill: '#94a3b8' }}
             />
           )}
-          <Line type="monotone" dataKey="buyNetWorth" name="Buy" stroke={COLORS.buy} strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
-          <Line type="monotone" dataKey="rentNetWorth" name="Rent" stroke={COLORS.rent} strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+          {portfolioDepletedYear && (
+            <ReferenceLine
+              x={portfolioDepletedYear}
+              stroke="#f59e0b"
+              strokeDasharray="3 3"
+              label={{ value: 'Portfolio depleted', position: 'insideTopLeft', fontSize: 10, fill: '#f59e0b' }}
+            />
+          )}
+          <Line type="monotone" dataKey="buyNetWorth" name="Buy (total NW)" stroke={COLORS.buy} strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+          <Line type="monotone" dataKey="rentNetWorth" name="Rent (total NW)" stroke={COLORS.rent} strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+          {showPortfolioLine && (
+            <Line type="monotone" dataKey="buyPortfolio" name="Buy (liquid portfolio)" stroke={COLORS.buy} strokeWidth={1.5} strokeDasharray="5 3" dot={false} activeDot={{ r: 4 }} />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>
