@@ -267,21 +267,27 @@ const BarLabel = ({ x, y, width, value }) => {
 
 export function WealthCompositionChart({ chartData }) {
   const filtered = chartData.filter((_, i) => i % 2 === 1 || i === 0);
+  const hasNegativePortfolio = filtered.some(d => d.buyPortfolio < 0);
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
       <h3 className="font-semibold text-slate-900 mb-1">Wealth Composition</h3>
-      <p className="text-xs text-slate-400 mb-4">Buy scenario: home equity vs. investment portfolio</p>
+      <p className="text-xs text-slate-400 mb-1">Buy scenario: home equity vs. investment portfolio</p>
+      {hasNegativePortfolio && (
+        <p className="text-xs text-amber-600 mb-3">Portfolio bars below $0 represent accumulated debt.</p>
+      )}
       <ResponsiveContainer width="100%" height={280}>
-        <BarChart data={filtered} margin={{ top: 20, right: 20, left: 10, bottom: 5 }}>
+        <BarChart data={filtered} margin={{ top: 20, right: 20, left: 10, bottom: 5 }} barCategoryGap="20%">
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis dataKey="year" tick={{ fontSize: 12 }} />
           <YAxis tickFormatter={formatDollar} tick={{ fontSize: 12 }} width={70} />
+          <ReferenceLine y={0} stroke="#94a3b8" strokeWidth={1} />
           <Tooltip content={<CustomTooltip />} />
           <Legend />
-          <Bar dataKey="buyEquity" name="Home equity (net)" stackId="buy" fill={COLORS.equity}>
+          <Bar dataKey="buyEquity" name="Home equity (net)" fill={COLORS.equity} radius={[4, 4, 0, 0]}>
             <LabelList content={<BarLabel />} position="top" />
           </Bar>
-          <Bar dataKey="buyPortfolio" name="Investment portfolio" stackId="buy" fill={COLORS.buy} radius={[4, 4, 0, 0]}>
+          <Bar dataKey="buyPortfolio" name="Investment portfolio" fill={COLORS.buy} radius={[4, 4, 0, 0]}>
             <LabelList content={<BarLabel />} position="top" />
           </Bar>
         </BarChart>
