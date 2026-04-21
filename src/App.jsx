@@ -93,6 +93,8 @@ export default function App() {
               rentFinal={rentFinal}
               breakEvenYear={breakEvenYear}
               horizonYears={profile.horizonYears}
+              buySnapshots={buySnapshots}
+              rentSnapshots={rentSnapshots}
             />
 
             <NetWorthChart chartData={chartData} breakEvenYear={breakEvenYear} />

@@ -23,33 +23,51 @@ const COLORS = {
 
 // ─── Headline card ────────────────────────────────────────────────────────────
 
-export function HeadlineCard({ buyFinal, rentFinal, breakEvenYear, horizonYears }) {
+export function HeadlineCard({ buyFinal, rentFinal, breakEvenYear, horizonYears, buySnapshots, rentSnapshots }) {
   const buyWins = buyFinal > rentFinal;
   const delta = Math.abs(buyFinal - rentFinal);
   const winner = buyWins ? 'Buying' : 'Renting';
   const winnerColor = buyWins ? 'text-indigo-600' : 'text-emerald-600';
   const winnerBg = buyWins ? 'bg-indigo-50 border-indigo-200' : 'bg-emerald-50 border-emerald-200';
 
+  const buyInsolventYear = buySnapshots?.find(s => s.portfolioInsolvent)?.year;
+  const rentInsolventYear = rentSnapshots?.find(s => s.portfolioInsolvent)?.year;
+  const buyFullyInsolvent = buySnapshots?.some(s => s.fullyInsolvent);
+  const rentFullyInsolvent = rentSnapshots?.some(s => s.fullyInsolvent);
+  const anyInsolvent = buyInsolventYear || rentInsolventYear;
+
   return (
-    <div className={`rounded-2xl border-2 p-6 ${winnerBg}`}>
-      <p className="text-sm font-medium text-slate-500 mb-1">Over {horizonYears} years</p>
-      <h2 className={`text-3xl font-bold ${winnerColor} mb-2`}>
-        {winner} wins by {formatDollar(delta)}
-      </h2>
-      <div className="flex flex-wrap gap-6 mt-4">
-        <div>
-          <p className="text-xs text-slate-500">Buy net worth</p>
-          <p className="text-xl font-semibold text-indigo-600">{formatDollarFull(buyFinal)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-500">Rent net worth</p>
-          <p className="text-xl font-semibold text-emerald-600">{formatDollarFull(rentFinal)}</p>
-        </div>
-        <div>
-          <p className="text-xs text-slate-500">Break-even year</p>
-          <p className="text-xl font-semibold text-slate-700">
-            {breakEvenYear ? `Year ${breakEvenYear}` : `Not within ${horizonYears} yrs`}
+    <div className="flex flex-col gap-3">
+      {anyInsolvent && (
+        <div className="bg-red-50 border-2 border-red-300 rounded-2xl px-5 py-4">
+          <p className="text-sm font-bold text-red-700 mb-1">⚠ Affordability Warning</p>
+          <p className="text-xs text-red-600">
+            {buyInsolventYear && `Buy scenario: investment portfolio depleted by Year ${buyInsolventYear} — you would need to take on debt or sell assets to continue. `}
+            {rentInsolventYear && `Rent scenario: investment portfolio depleted by Year ${rentInsolventYear}. `}
+            {(buyFullyInsolvent || rentFullyInsolvent) && 'One or both scenarios result in negative net worth. Adjust income, expenses, or purchase price.'}
           </p>
+        </div>
+      )}
+      <div className={`rounded-2xl border-2 p-6 ${winnerBg}`}>
+        <p className="text-sm font-medium text-slate-500 mb-1">Over {horizonYears} years</p>
+        <h2 className={`text-3xl font-bold ${winnerColor} mb-2`}>
+          {winner} wins by {formatDollar(delta)}
+        </h2>
+        <div className="flex flex-wrap gap-6 mt-4">
+          <div>
+            <p className="text-xs text-slate-500">Buy net worth</p>
+            <p className={`text-xl font-semibold ${buyFinal < 0 ? 'text-red-600' : 'text-indigo-600'}`}>{formatDollarFull(buyFinal)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">Rent net worth</p>
+            <p className={`text-xl font-semibold ${rentFinal < 0 ? 'text-red-600' : 'text-emerald-600'}`}>{formatDollarFull(rentFinal)}</p>
+          </div>
+          <div>
+            <p className="text-xs text-slate-500">Break-even year</p>
+            <p className="text-xl font-semibold text-slate-700">
+              {breakEvenYear ? `Year ${breakEvenYear}` : `Not within ${horizonYears} yrs`}
+            </p>
+          </div>
         </div>
       </div>
     </div>
