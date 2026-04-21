@@ -254,47 +254,40 @@ export function CashFlowCard({ buySnapshot, rentSnapshot, monthlyIncome, monthly
   );
 }
 
-// ─── Wealth composition chart with data labels ────────────────────────────────
-
-const BarLabel = ({ x, y, width, value }) => {
-  if (!value || value < 50000) return null;
-  return (
-    <text x={x + width / 2} y={y - 4} fill="#475569" fontSize={10} textAnchor="middle">
-      {formatDollar(value)}
-    </text>
-  );
-};
+// ─── Wealth composition chart ─────────────────────────────────────────────────
 
 const CompositionTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   const d = payload[0]?.payload;
   if (!d) return null;
   const totalNW = d.buyNetWorth;
-  const equity = d.buyEquity;
-  const portfolio = d.buyPortfolio;
-  const liquidPct = totalNW > 0 ? Math.round((Math.max(0, portfolio) / totalNW) * 100) : 0;
-  const illiquidPct = totalNW > 0 ? Math.round((equity / totalNW) * 100) : 0;
+  const liquid = Math.max(0, d.buyPortfolio);
+  const illiquid = Math.max(0, totalNW - liquid);
+  const liquidPct = totalNW > 0 ? Math.round((liquid / totalNW) * 100) : 0;
+  const illiquidPct = totalNW > 0 ? Math.round((illiquid / totalNW) * 100) : 0;
+  const hasDebt = d.buyPortfolio < 0;
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-4 text-sm min-w-[200px]">
+    <div className="bg-white border border-slate-200 rounded-xl shadow-lg p-4 text-sm min-w-[210px]">
       <p className="font-semibold text-slate-700 mb-2">{label}</p>
-      <div className="flex justify-between gap-4 mb-1">
+      <div className="flex justify-between gap-4 mb-2">
         <span className="text-slate-500">Total net worth</span>
         <span className="font-semibold">{formatDollarFull(totalNW)}</span>
       </div>
-      <div className="border-t border-slate-100 mt-2 pt-2 space-y-1">
+      <div className="border-t border-slate-100 pt-2 space-y-1">
         <div className="flex justify-between gap-4">
-          <span className="text-indigo-500">Home equity (illiquid)</span>
-          <span className="font-medium">{formatDollarFull(equity)} · {illiquidPct}%</span>
+          <span className="text-indigo-400">Home equity (illiquid)</span>
+          <span className="font-medium">{formatDollarFull(illiquid)} · {illiquidPct}%</span>
         </div>
         <div className="flex justify-between gap-4">
-          <span className={portfolio >= 0 ? 'text-violet-500' : 'text-red-500'}>
-            {portfolio >= 0 ? 'Portfolio (liquid)' : 'Drawn from equity'}
-          </span>
-          <span className={`font-medium ${portfolio < 0 ? 'text-red-600' : ''}`}>
-            {portfolio >= 0 ? formatDollarFull(portfolio) : `−${formatDollarFull(Math.abs(portfolio))}`} · {portfolio >= 0 ? `${liquidPct}%` : 'debt'}
-          </span>
+          <span className="text-violet-500">Portfolio (liquid)</span>
+          <span className="font-medium">{formatDollarFull(liquid)} · {liquidPct}%</span>
         </div>
+        {hasDebt && (
+          <p className="text-xs text-amber-600 pt-1">
+            Housing shortfall of {formatDollarFull(Math.abs(d.buyPortfolio))} is offset against equity.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -302,23 +295,38 @@ const CompositionTooltip = ({ active, payload, label }) => {
 
 export function WealthCompositionChart({ chartData }) {
   const filtered = chartData.filter((_, i) => i % 2 === 1 || i === 0);
-  const hasNegativePortfolio = filtered.some(d => d.buyPortfolio < 0);
+  const hasDebt = filtered.some(d => d.buyPortfolio < 0);
 
-  // Build data with positive equity, positive liquid portfolio, and negative debt as separate keys
-  const compositionData = filtered.map(d => ({
-    ...d,
-    equityBar: d.buyEquity,
-    liquidBar: Math.max(0, d.buyPortfolio),
-    debtBar: Math.min(0, d.buyPortfolio), // negative value, renders below zero
-  }));
+  // Bar height = total net worth. Split: liquid portfolio on top, illiquid equity on bottom.
+  // When portfolio is negative, it reduces the illiquid bar (total NW < gross equity).
+  const compositionData = filtered.map((d, i) => {
+    const liquid = Math.max(0, d.buyPortfolio);
+    const illiquid = Math.max(0, d.buyNetWorth - liquid);
+    return { ...d, illiquidBar: illiquid, liquidBar: liquid };
+  });
+
+  // Show label at top of whichever bar is the topmost in the stack
+  const makeTopLabel = (showWhenLiquid) => ({ x, y, width, index }) => {
+    const d = compositionData[index];
+    if (!d) return null;
+    const isLiquidTop = d.liquidBar > 0;
+    if (showWhenLiquid !== isLiquidTop) return null;
+    const nw = d.buyNetWorth;
+    if (!nw || nw < 50000) return null;
+    return (
+      <text x={x + width / 2} y={y - 5} fill="#475569" fontSize={10} textAnchor="middle">
+        {formatDollar(nw)}
+      </text>
+    );
+  };
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
       <h3 className="font-semibold text-slate-900 mb-1">Wealth Composition (Buy)</h3>
-      <p className="text-xs text-slate-400 mb-1">Total net worth = home equity + liquid portfolio</p>
-      {hasNegativePortfolio && (
+      <p className="text-xs text-slate-400 mb-1">Bar height = total net worth · split into liquid vs. illiquid</p>
+      {hasDebt && (
         <p className="text-xs text-amber-600 mb-3">
-          Red segment = equity drawn to fund housing gap. Net worth already accounts for this.
+          Housing shortfall reduces liquid portfolio — bars show net worth after offset.
         </p>
       )}
       <ResponsiveContainer width="100%" height={280}>
@@ -326,20 +334,16 @@ export function WealthCompositionChart({ chartData }) {
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis dataKey="year" tick={{ fontSize: 12 }} />
           <YAxis tickFormatter={formatDollar} tick={{ fontSize: 12 }} width={70} />
-          <ReferenceLine y={0} stroke="#94a3b8" strokeWidth={1} />
           <Tooltip content={<CompositionTooltip />} />
           <Legend
-            formatter={(value) => ({
-              equityBar: 'Home equity (illiquid)',
-              liquidBar: 'Portfolio (liquid)',
-              debtBar: 'Drawn from equity (debt)',
-            }[value] || value)}
+            formatter={(value) => ({ illiquidBar: 'Home equity (illiquid)', liquidBar: 'Portfolio (liquid)' }[value] || value)}
           />
-          <Bar dataKey="equityBar" name="equityBar" stackId="nw" fill={COLORS.equity}>
-            <LabelList content={<BarLabel />} position="top" />
+          <Bar dataKey="illiquidBar" name="illiquidBar" stackId="nw" fill={COLORS.equity} radius={[4, 4, 0, 0]}>
+            <LabelList content={makeTopLabel(false)} position="top" />
           </Bar>
-          <Bar dataKey="liquidBar" name="liquidBar" stackId="nw" fill={COLORS.buy} radius={[4, 4, 0, 0]} />
-          <Bar dataKey="debtBar" name="debtBar" stackId="nw" fill="#ef4444" radius={[0, 0, 4, 4]} />
+          <Bar dataKey="liquidBar" name="liquidBar" stackId="nw" fill={COLORS.buy} radius={[4, 4, 0, 0]}>
+            <LabelList content={makeTopLabel(true)} position="top" />
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
