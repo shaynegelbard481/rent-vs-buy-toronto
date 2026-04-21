@@ -6,14 +6,13 @@
 import { monthlyPayment, remainingBalance } from './mortgage.js';
 
 /**
- * Grow a portfolio month by month with a constant monthly cash flow.
- * monthlyContribution can be negative (drawdown).
- * Returns the raw value — can go negative, representing debt.
+ * Grow a portfolio for exactly 12 months with a constant monthly cash flow.
+ * Used for incremental year-by-year simulation so lump-sum events can be
+ * injected between years. monthlyContribution can be negative (drawdown).
  */
-function growPortfolio(initialValue, annualReturn, months, monthlyContribution = 0) {
+function growOneYear(value, annualReturn, monthlyContribution = 0) {
   const r = annualReturn / 12;
-  let value = initialValue;
-  for (let m = 0; m < months; m++) {
+  for (let m = 0; m < 12; m++) {
     value = value * (1 + r) + monthlyContribution;
   }
   return value;
@@ -78,63 +77,59 @@ export function projectBuyScenario(params, cityConfig) {
 
   const mortgagePayment = monthlyPayment(loanAmount, mortgageRate, amortizationYears);
 
-  // Remaining liquid capital after down payment + closing costs
-  // Can be zero — if closing costs exceed liquid assets, they're funded by debt (negative start)
-  const remainingCapital = params.liquidAssets - downPayment - closingCosts;
-  const capitalCostBasis = Math.max(0, remainingCapital);
+  // Starting portfolio: liquid assets minus down payment and closing costs
+  let portfolioValue = params.liquidAssets - downPayment - closingCosts;
+  const capitalCostBasis = Math.max(0, portfolioValue);
 
   const snapshots = [];
+  let cumulativeRenovSpend = 0;
+  let totalOngoingPaid = 0;
 
   for (let year = 1; year <= horizonYears; year++) {
-    const months = year * 12;
+    const homeValue = purchasePrice * Math.pow(1 + appreciationRate, year);
 
-    let homeValue = purchasePrice * Math.pow(1 + appreciationRate, year);
+    // Renovation spend this year — deducted from portfolio as a lump sum
+    const renovThisYear = renovByYear[year] || 0;
+    cumulativeRenovSpend += renovThisYear;
 
-    let cumulativeRenovSpend = 0;
-    for (let y = 1; y <= year; y++) cumulativeRenovSpend += (renovByYear[y] || 0);
-    const renovationEquity = cumulativeRenovSpend * (renovationValueAddPct / 100);
-    if (renovationBudget > 0) homeValue += renovationEquity;
+    const renovationEquity = renovationBudget > 0
+      ? cumulativeRenovSpend * (renovationValueAddPct / 100)
+      : 0;
+    const homeValueWithRenov = homeValue + renovationEquity;
 
-    const mortgageBalance = remainingBalance(loanAmount, mortgageRate, amortizationYears, months);
+    const mortgageBalance = remainingBalance(loanAmount, mortgageRate, amortizationYears, year * 12);
 
     const sellingCosts =
-      cityConfig.listingAgentCommission * homeValue +
-      cityConfig.buyerAgentCommission * homeValue +
+      cityConfig.listingAgentCommission * homeValueWithRenov +
+      cityConfig.buyerAgentCommission * homeValueWithRenov +
       cityConfig.sellerLegalFees;
 
-    const grossEquity = homeValue - mortgageBalance;
+    const grossEquity = homeValueWithRenov - mortgageBalance;
     const netEquity = grossEquity - sellingCosts;
 
-    const annualPropertyTax = homeValue * cityConfig.propertyTaxRate;
+    const annualPropertyTax = homeValueWithRenov * cityConfig.propertyTaxRate;
     const annualMaintenance = purchasePrice * cityConfig.maintenanceRate;
     const annualInsurance = cityConfig.homeInsuranceAnnual;
     const annualCondo = (condoFeesMonthly || 0) * 12;
     const annualUtilities = utilityBuyMonthly * 12;
     const totalAnnualOngoing = annualPropertyTax + annualMaintenance + annualInsurance + annualCondo + annualUtilities;
+    totalOngoingPaid += totalAnnualOngoing;
 
     const monthlyHousingCost = mortgagePayment + totalAnnualOngoing / 12;
-
-    // Net monthly cash flow — negative means drawing from portfolio (or taking on debt)
     const monthlySurplus = monthlyIncome - monthlyExpenses - monthlyHousingCost;
 
-    // Portfolio: surplus invested, shortfall drawn down. Can go negative (debt).
-    const portfolioValue = growPortfolio(remainingCapital, portfolioReturn, months, monthlySurplus);
-    const portfolioAfterTax = afterTaxPortfolio(portfolioValue, capitalCostBasis, marginalRate, accountType);
+    // Grow portfolio for this year's monthly cash flow, then deduct renovation lump sum
+    portfolioValue = growOneYear(portfolioValue, portfolioReturn, monthlySurplus);
+    portfolioValue -= renovThisYear;
 
-    // Total net worth: home equity + portfolio (portfolio may be negative)
+    const portfolioAfterTax = afterTaxPortfolio(portfolioValue, capitalCostBasis, marginalRate, accountType);
     const totalNetWorth = netEquity + portfolioAfterTax;
 
-    const totalMortgagePaid = mortgagePayment * months;
-    const totalOngoingPaid = totalAnnualOngoing * year;
-    const totalHousingCash = closingCosts + downPayment + totalMortgagePaid + totalOngoingPaid + cumulativeRenovSpend;
-
-    // Flag when portfolio has been fully depleted (unsustainable without selling assets)
-    const portfolioInsolvent = portfolioValue < 0;
-    const fullyInsolvent = totalNetWorth < 0;
+    const totalHousingCash = closingCosts + downPayment + mortgagePayment * year * 12 + totalOngoingPaid + cumulativeRenovSpend;
 
     snapshots.push({
       year,
-      homeValue: Math.round(homeValue),
+      homeValue: Math.round(homeValueWithRenov),
       mortgageBalance: Math.round(mortgageBalance),
       grossEquity: Math.round(grossEquity),
       netEquity: Math.round(netEquity),
@@ -147,8 +142,8 @@ export function projectBuyScenario(params, cityConfig) {
       annualPropertyTax: Math.round(annualPropertyTax),
       annualMaintenance: Math.round(annualMaintenance),
       sellingCosts: Math.round(sellingCosts),
-      portfolioInsolvent,
-      fullyInsolvent,
+      portfolioInsolvent: portfolioValue < 0,
+      fullyInsolvent: totalNetWorth < 0,
     });
   }
 
@@ -172,34 +167,22 @@ export function projectRentScenario(params, cityConfig) {
     liquidAssets,
   } = params;
 
-  const investedCapital = liquidAssets;
-  const capitalCostBasis = Math.max(0, investedCapital);
+  let portfolioValue = liquidAssets;
+  const capitalCostBasis = Math.max(0, portfolioValue);
 
   const snapshots = [];
+  let cumulativeRentPaid = 0;
 
   for (let year = 1; year <= horizonYears; year++) {
-    const months = year * 12;
-
     const currentYearMonthlyRent = monthlyRent * Math.pow(1 + rentIncreaseRate, year - 1);
     const monthlyHousingCost = currentYearMonthlyRent + utilityRentMonthly;
-
-    // Net monthly cash flow — negative means drawing from portfolio
     const monthlySurplus = monthlyIncome - monthlyExpenses - monthlyHousingCost;
 
-    // Portfolio: can go negative if rent + expenses exceed income + savings
-    const portfolioValue = growPortfolio(investedCapital, portfolioReturn, months, monthlySurplus);
+    portfolioValue = growOneYear(portfolioValue, portfolioReturn, monthlySurplus);
+    cumulativeRentPaid += currentYearMonthlyRent * 12;
+
     const portfolioAfterTax = afterTaxPortfolio(portfolioValue, capitalCostBasis, marginalRate, accountType);
-
     const totalNetWorth = portfolioAfterTax;
-
-    // Cumulative rent paid (for reference)
-    let cumulativeRentPaid = 0;
-    for (let y = 0; y < year; y++) {
-      cumulativeRentPaid += monthlyRent * Math.pow(1 + rentIncreaseRate, y) * 12;
-    }
-
-    const portfolioInsolvent = portfolioValue < 0;
-    const fullyInsolvent = totalNetWorth < 0;
 
     snapshots.push({
       year,
@@ -210,8 +193,8 @@ export function projectRentScenario(params, cityConfig) {
       monthlySurplus: Math.round(monthlySurplus),
       currentYearMonthlyRent: Math.round(currentYearMonthlyRent),
       cumulativeRentPaid: Math.round(cumulativeRentPaid),
-      portfolioInsolvent,
-      fullyInsolvent,
+      portfolioInsolvent: portfolioValue < 0,
+      fullyInsolvent: totalNetWorth < 0,
     });
   }
 
