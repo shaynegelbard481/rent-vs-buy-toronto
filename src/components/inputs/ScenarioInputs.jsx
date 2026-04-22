@@ -11,8 +11,8 @@ function blendedRate(tfsa, rrsp, taxable, marginalRate) {
   return (effectiveTaxable + effectiveRRSP) / total;
 }
 
-// Estimate combined Ontario + Federal marginal rate from gross salary (2024 brackets, simplified)
-function estimateOntarioRate(salary) {
+// Estimate combined Ontario + Federal MARGINAL rate from gross salary (2024 brackets, simplified)
+function estimateMarginalRate(salary) {
   if (salary <= 55000)  return 0.30;
   if (salary <= 110000) return 0.43;
   if (salary <= 150000) return 0.44;
@@ -20,12 +20,22 @@ function estimateOntarioRate(salary) {
   return 0.54;
 }
 
+// Estimate EFFECTIVE (average) rate — what fraction of your gross actually goes to tax
+function estimateEffectiveRate(salary) {
+  if (salary <= 60000)  return 0.23;
+  if (salary <= 100000) return 0.28;
+  if (salary <= 150000) return 0.33;
+  if (salary <= 220000) return 0.37;
+  return 0.42;
+}
+
 export function BaseProfileInputs({ profile, onChange }) {
   const [refined, setRefined] = useState(false);
   const set = (key) => (val) => onChange({ ...profile, [key]: val });
 
+  const effectiveTaxRate = profile.effectiveTaxRate ?? 0.33;
   const monthlyTakeHome = profile.annualSalary
-    ? Math.round((profile.annualSalary * (1 - profile.marginalRate)) / 12)
+    ? Math.round((profile.annualSalary * (1 - effectiveTaxRate)) / 12)
     : profile.monthlyIncome;
 
   const computedBlendedRate = refined
@@ -33,8 +43,12 @@ export function BaseProfileInputs({ profile, onChange }) {
     : profile.marginalRate;
 
   const totalRefined = (profile.tfsaBalance || 0) + (profile.rrspBalance || 0) + (profile.taxableBalance || 0);
-  const ontarioEstimate = profile.annualSalary ? estimateOntarioRate(profile.annualSalary) : null;
-  const showAutoFill = ontarioEstimate && Math.abs(ontarioEstimate - profile.marginalRate) > 0.005;
+
+  // Estimators for auto-fill buttons
+  const marginalEstimate  = profile.annualSalary ? estimateMarginalRate(profile.annualSalary)  : null;
+  const effectiveEstimate = profile.annualSalary ? estimateEffectiveRate(profile.annualSalary) : null;
+  const showMarginalFill  = marginalEstimate  && Math.abs(marginalEstimate  - profile.marginalRate)  > 0.005;
+  const showEffectiveFill = effectiveEstimate && Math.abs(effectiveEstimate - effectiveTaxRate)       > 0.005;
 
   function handleRefinedToggle(on) {
     setRefined(on);
@@ -45,10 +59,7 @@ export function BaseProfileInputs({ profile, onChange }) {
         tfsaBalance:    third,
         rrspBalance:    third,
         taxableBalance: profile.liquidAssets - third * 2,
-        effectiveRate:  computedBlendedRate,
       });
-    } else {
-      onChange({ ...profile, effectiveRate: profile.marginalRate });
     }
   }
 
@@ -71,14 +82,17 @@ export function BaseProfileInputs({ profile, onChange }) {
         <InputField
           label="Annual gross salary"
           value={profile.annualSalary}
-          onChange={val => onChange({
-            ...profile,
-            annualSalary:  val,
-            monthlyIncome: Math.round((val * (1 - profile.marginalRate)) / 12),
-          })}
+          onChange={val => {
+            const newEffective = profile.effectiveTaxRate ?? estimateEffectiveRate(val);
+            onChange({
+              ...profile,
+              annualSalary:     val,
+              monthlyIncome:    Math.round((val * (1 - newEffective)) / 12),
+            });
+          }}
           prefix="$"
           helper={profile.annualSalary
-            ? `≈ $${monthlyTakeHome.toLocaleString()}/mo after tax at ${Math.round(profile.marginalRate * 100)}%`
+            ? `≈ $${monthlyTakeHome.toLocaleString()}/mo take-home (${Math.round(effectiveTaxRate * 100)}% effective rate)`
             : 'Used to derive monthly take-home'}
         />
 
@@ -90,39 +104,64 @@ export function BaseProfileInputs({ profile, onChange }) {
           helper="Food, transport, lifestyle — excluding housing"
         />
 
-        {/* Marginal rate with Ontario estimator */}
+        {/* Effective tax rate — used for take-home */}
         <div className="flex flex-col gap-1">
           <InputField
-            label="Marginal tax rate"
-            value={profile.marginalRate * 100}
+            label="Effective tax rate"
+            value={effectiveTaxRate * 100}
             onChange={v => {
               const rate = v / 100;
               const nextIncome = profile.annualSalary
                 ? Math.round((profile.annualSalary * (1 - rate)) / 12)
                 : profile.monthlyIncome;
-              onChange({ ...profile, marginalRate: rate, monthlyIncome: nextIncome });
+              onChange({ ...profile, effectiveTaxRate: rate, monthlyIncome: nextIncome });
             }}
+            suffix="%"
+            step={1}
+            min={15}
+            max={50}
+            decimals={0}
+            helper={effectiveEstimate
+              ? `Average rate on total income — est. ~${Math.round(effectiveEstimate * 100)}% at this salary`
+              : 'Average rate — used to derive monthly take-home pay'}
+          />
+          {showEffectiveFill && (
+            <button
+              onClick={() => {
+                const rate = effectiveEstimate;
+                const nextIncome = profile.annualSalary
+                  ? Math.round((profile.annualSalary * (1 - rate)) / 12)
+                  : profile.monthlyIncome;
+                onChange({ ...profile, effectiveTaxRate: rate, monthlyIncome: nextIncome });
+              }}
+              className="self-start text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+            >
+              Use estimate (~{Math.round(effectiveEstimate * 100)}%)
+            </button>
+          )}
+        </div>
+
+        {/* Marginal rate — used for investment gains tax */}
+        <div className="flex flex-col gap-1">
+          <InputField
+            label="Marginal tax rate"
+            value={profile.marginalRate * 100}
+            onChange={v => onChange({ ...profile, marginalRate: v / 100 })}
             suffix="%"
             step={1}
             min={20}
             max={55}
             decimals={0}
-            helper={ontarioEstimate
-              ? `Ontario+Federal est. ~${Math.round(ontarioEstimate * 100)}% at this income`
-              : 'Applied to derive take-home and tax portfolio gains'}
+            helper={marginalEstimate
+              ? `Top bracket rate — est. ~${Math.round(marginalEstimate * 100)}% · used to tax investment gains`
+              : 'Top bracket — used to tax capital gains on your portfolio'}
           />
-          {showAutoFill && (
+          {showMarginalFill && (
             <button
-              onClick={() => {
-                const rate = ontarioEstimate;
-                const nextIncome = profile.annualSalary
-                  ? Math.round((profile.annualSalary * (1 - rate)) / 12)
-                  : profile.monthlyIncome;
-                onChange({ ...profile, marginalRate: rate, monthlyIncome: nextIncome });
-              }}
+              onClick={() => onChange({ ...profile, marginalRate: marginalEstimate })}
               className="self-start text-xs text-indigo-600 hover:text-indigo-800 font-medium"
             >
-              Use Ontario estimate (~{Math.round(ontarioEstimate * 100)}%)
+              Use Ontario estimate (~{Math.round(marginalEstimate * 100)}%)
             </button>
           )}
         </div>
@@ -431,7 +470,7 @@ export function BuyScenarioInputs({ buy, onChange, cityConfig = toronto }) {
           helper="Lawyer fees on sale"
         />
         <div className="col-span-2 bg-slate-50 rounded-xl px-4 py-2.5 text-sm text-slate-500">
-          Actual selling cost depends on your sale price at exit — deducted from equity each year in the model.
+          Selling costs are deducted from net worth only at your exit year — intermediate years use gross equity.
         </div>
       </Collapsible>
 

@@ -183,9 +183,9 @@ function Row({ label, value, indent = false, bold = false, positive = false, neg
   );
 }
 
-export function CashFlowCard({ buySnapshot, rentSnapshot, monthlyIncome, monthlyExpenses, annualSalary, marginalRate }) {
+export function CashFlowCard({ buySnapshot, rentSnapshot, monthlyIncome, monthlyExpenses, annualSalary, effectiveTaxRate }) {
   const grossMonthly = annualSalary ? Math.round(annualSalary / 12) : null;
-  const taxMonthly = annualSalary ? Math.round(annualSalary * marginalRate / 12) : null;
+  const taxMonthly = annualSalary ? Math.round(annualSalary * (effectiveTaxRate ?? 0.33) / 12) : null;
   const buySurplus = buySnapshot.monthlySurplus;
   const rentSurplus = rentSnapshot.monthlySurplus;
   const rentUtilities = rentSnapshot.monthlyHousingCost - rentSnapshot.currentYearMonthlyRent;
@@ -399,17 +399,21 @@ export function FIRECard({ buySnapshots, rentSnapshots, buyFireYear, rentFireYea
         {/* Numbers */}
         <div className="space-y-1 text-xs">
           <div className="flex justify-between">
+            <span className="text-slate-500">Investable at Yr {horizonYears}</span>
+            <span className="font-medium">{fmt(snapshot.fireInvestable)}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-slate-500">Safe withdrawal ({(withdrawalRate * 100).toFixed(0)}%/yr)</span>
             <span className="font-medium">{fmt(snapshot.annualSafeWithdrawal)}/yr</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-slate-500">Annual spend at Yr {horizonYears}</span>
-            <span className="font-medium">{fmt(snapshot.annualTotalSpend)}/yr</span>
+            <span className="text-slate-500">Annual living spend at Yr {horizonYears}</span>
+            <span className="font-medium">{fmt(snapshot.fireAnnualSpend)}/yr</span>
           </div>
-          {!achieved && snapshot.annualTotalSpend > 0 && (
+          {!achieved && (snapshot.fireAnnualSpend ?? 0) > 0 && (
             <div className="flex justify-between text-amber-600">
-              <span>Gap (need {fmt(snapshot.annualTotalSpend / withdrawalRate)} invested)</span>
-              <span className="font-medium">–{fmt(snapshot.annualTotalSpend - snapshot.annualSafeWithdrawal)}/yr</span>
+              <span>Gap (need {fmt((snapshot.fireAnnualSpend ?? 0) / withdrawalRate)} invested)</span>
+              <span className="font-medium">–{fmt((snapshot.fireAnnualSpend ?? 0) - snapshot.annualSafeWithdrawal)}/yr</span>
             </div>
           )}
         </div>
@@ -423,9 +427,12 @@ export function FIRECard({ buySnapshots, rentSnapshots, buyFireYear, rentFireYea
         <span className="text-lg">🔥</span>
         <h3 className="font-semibold text-slate-900">FIRE Analysis</h3>
       </div>
-      <p className="text-xs text-slate-400 mb-5">
-        Can your liquid portfolio sustain all spending via safe withdrawals?
-        Home equity is treated as illiquid — not included in withdrawal capacity.
+      <p className="text-xs text-slate-400 mb-1">
+        Each year asks: if you sold your home today, could you retire?
+        Buy scenario adds net sale proceeds to investable portfolio. Spend = living expenses only (housing resolved).
+      </p>
+      <p className="text-xs text-amber-600 mb-5">
+        Note: if you hold RRSP balances, early withdrawal attracts full income tax — FIRE may require additional planning.
       </p>
       <div className="flex gap-6 divide-x divide-slate-100">
         <ScenarioFIRE label="Buy" snapshot={buyFinal}  fireYear={buyFireYear}  color="text-indigo-600" />

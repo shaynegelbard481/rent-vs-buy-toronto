@@ -7,9 +7,10 @@ import { Commentary } from './components/outputs/Commentary.jsx';
 
 const DEFAULT_PROFILE = {
   annualSalary:      150000,
-  monthlyIncome:     Math.round((150000 * (1 - 0.43)) / 12),
+  effectiveTaxRate:  0.33,                                         // for take-home
+  monthlyIncome:     Math.round((150000 * (1 - 0.33)) / 12),
   monthlyExpenses:   3500,
-  marginalRate:      0.43,
+  marginalRate:      0.43,                                         // for investment gains
   portfolioReturn:   0.07,
   horizonYears:      10,
   liquidAssets:      300000,
@@ -49,6 +50,7 @@ const DEFAULT_RENT = {
 const SENSITIVITY_RATES = [0.00, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08];
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState('inputs');
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [buy, setBuy]         = useState(DEFAULT_BUY);
   const [rent, setRent]       = useState(DEFAULT_RENT);
@@ -85,7 +87,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-slate-900">Rent vs. Buy</h1>
             <p className="text-xs text-slate-400">Toronto · net worth planner</p>
@@ -99,10 +101,30 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-8 items-start">
+      <main className="max-w-5xl mx-auto px-6 py-8">
+        {/* Tab bar */}
+        <div className="flex gap-1 mb-8 bg-slate-100 rounded-xl p-1 w-fit">
+          {[
+            { id: 'inputs',   label: 'Inputs'   },
+            { id: 'analysis', label: 'Analysis' },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`px-6 py-2 rounded-lg text-sm font-medium transition-colors ${
+                activeTab === id
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-          <div className="flex flex-col gap-5 min-w-0">
+        {/* ── Inputs tab ── */}
+        {activeTab === 'inputs' && (
+          <div className="max-w-[520px] flex flex-col gap-5">
             <BaseProfileInputs profile={profile} onChange={setProfile} />
             <BuyScenarioInputs buy={buy} onChange={setBuy} cityConfig={toronto} />
             <RentScenarioInputs rent={rent} onChange={setRent} cityConfig={toronto} />
@@ -118,8 +140,18 @@ export default function App() {
                 ))}
               </ul>
             </div>
-          </div>
 
+            <button
+              onClick={() => setActiveTab('analysis')}
+              className="self-start flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors"
+            >
+              View Analysis →
+            </button>
+          </div>
+        )}
+
+        {/* ── Analysis tab ── */}
+        {activeTab === 'analysis' && (
           <div className="flex flex-col gap-5">
             <HeadlineCard
               buyFinal={buyFinal}
@@ -138,7 +170,7 @@ export default function App() {
               monthlyIncome={profile.monthlyIncome}
               monthlyExpenses={profile.monthlyExpenses}
               annualSalary={profile.annualSalary}
-              marginalRate={profile.marginalRate}
+              effectiveTaxRate={profile.effectiveTaxRate}
             />
 
             <FIRECard
@@ -167,7 +199,7 @@ export default function App() {
 
             <DetailTable buySnapshots={buySnapshots} rentSnapshots={rentSnapshots} />
           </div>
-        </div>
+        )}
       </main>
 
       <footer className="mt-12 border-t border-slate-200 py-6 text-center text-xs text-slate-400">
