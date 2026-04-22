@@ -350,6 +350,152 @@ export function WealthCompositionChart({ chartData }) {
   );
 }
 
+// ─── FIRE card ────────────────────────────────────────────────────────────────
+
+export function FIRECard({ buySnapshots, rentSnapshots, buyFireYear, rentFireYear, horizonYears, withdrawalRate }) {
+  const buyFinal  = buySnapshots[buySnapshots.length - 1];
+  const rentFinal = rentSnapshots[rentSnapshots.length - 1];
+
+  if (!buyFinal || !rentFinal) return null;
+
+  const fmt = (v) => v >= 1000 ? `$${Math.round(v / 1000)}K` : `$${Math.round(v)}`;
+
+  function ScenarioFIRE({ label, snapshot, fireYear, color }) {
+    const pct      = Math.round((snapshot.firePct ?? 0) * 100);
+    const achieved = snapshot.fireAchieved;
+    return (
+      <div className="flex-1 min-w-0">
+        <p className={`text-xs font-bold uppercase tracking-wide mb-3 ${color}`}>{label}</p>
+
+        {/* FIRE status badge */}
+        <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold mb-3 ${
+          achieved
+            ? 'bg-emerald-100 text-emerald-700'
+            : fireYear === null
+              ? 'bg-slate-100 text-slate-500'
+              : 'bg-amber-100 text-amber-700'
+        }`}>
+          {achieved
+            ? `🔥 FIRE at Year ${fireYear}`
+            : fireYear
+              ? `🔥 FIRE at Year ${fireYear}`
+              : `Not in ${horizonYears}-yr horizon`}
+        </div>
+
+        {/* Progress bar */}
+        <div className="mb-3">
+          <div className="flex justify-between text-xs text-slate-500 mb-1">
+            <span>FIRE progress at Yr {horizonYears}</span>
+            <span className={pct >= 100 ? 'text-emerald-600 font-semibold' : ''}>{pct}%</span>
+          </div>
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${pct >= 100 ? 'bg-emerald-500' : pct >= 70 ? 'bg-amber-400' : 'bg-slate-300'}`}
+              style={{ width: `${Math.min(100, pct)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Numbers */}
+        <div className="space-y-1 text-xs">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Safe withdrawal ({(withdrawalRate * 100).toFixed(0)}%/yr)</span>
+            <span className="font-medium">{fmt(snapshot.annualSafeWithdrawal)}/yr</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Annual spend at Yr {horizonYears}</span>
+            <span className="font-medium">{fmt(snapshot.annualTotalSpend)}/yr</span>
+          </div>
+          {!achieved && snapshot.annualTotalSpend > 0 && (
+            <div className="flex justify-between text-amber-600">
+              <span>Gap (need {fmt(snapshot.annualTotalSpend / withdrawalRate)} invested)</span>
+              <span className="font-medium">–{fmt(snapshot.annualTotalSpend - snapshot.annualSafeWithdrawal)}/yr</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-lg">🔥</span>
+        <h3 className="font-semibold text-slate-900">FIRE Analysis</h3>
+      </div>
+      <p className="text-xs text-slate-400 mb-5">
+        Can your liquid portfolio sustain all spending via safe withdrawals?
+        Home equity is treated as illiquid — not included in withdrawal capacity.
+      </p>
+      <div className="flex gap-6 divide-x divide-slate-100">
+        <ScenarioFIRE label="Buy" snapshot={buyFinal}  fireYear={buyFireYear}  color="text-indigo-600" />
+        <div className="pl-6 w-px" />
+        <ScenarioFIRE label="Rent" snapshot={rentFinal} fireYear={rentFireYear} color="text-emerald-600" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Sensitivity table ────────────────────────────────────────────────────────
+
+export function SensitivityTable({ sensitivityData, currentAppreciation, horizonYears }) {
+  const fmt = (v) => {
+    const abs = Math.abs(v);
+    const sign = v < 0 ? '–' : '';
+    if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000)     return `${sign}$${Math.round(abs / 1_000)}K`;
+    return `${sign}$${Math.round(abs)}`;
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+      <h3 className="font-semibold text-slate-900 mb-1">Appreciation Sensitivity</h3>
+      <p className="text-xs text-slate-400 mb-4">
+        How the buy vs. rent outcome shifts at different home appreciation rates — all other inputs unchanged.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="text-left py-2 pr-3 text-slate-500 font-medium">Appreciation</th>
+              <th className="text-right py-2 px-2 text-indigo-500 font-medium">Buy NW</th>
+              <th className="text-right py-2 px-2 text-emerald-500 font-medium">Rent NW</th>
+              <th className="text-right py-2 px-2 text-slate-500 font-medium">Winner</th>
+              <th className="text-right py-2 pl-2 text-slate-500 font-medium">Δ</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sensitivityData.map((row, i) => {
+              const isCurrent = Math.abs(row.appreciationRate - currentAppreciation) < 0.001;
+              return (
+                <tr
+                  key={i}
+                  className={`border-b border-slate-50 ${isCurrent ? 'bg-indigo-50' : 'hover:bg-slate-50'}`}
+                >
+                  <td className="py-2 pr-3 font-medium">
+                    {(row.appreciationRate * 100).toFixed(0)}%
+                    {isCurrent && <span className="ml-1.5 text-indigo-500 text-[10px]">← current</span>}
+                  </td>
+                  <td className="py-2 px-2 text-right font-medium text-indigo-600">{fmt(row.buyFinal)}</td>
+                  <td className="py-2 px-2 text-right font-medium text-emerald-600">{fmt(row.rentFinal)}</td>
+                  <td className="py-2 px-2 text-right">
+                    <span className={`px-1.5 py-0.5 rounded font-semibold ${row.buyWins ? 'bg-indigo-100 text-indigo-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                      {row.buyWins ? 'Buy' : 'Rent'}
+                    </span>
+                  </td>
+                  <td className={`py-2 pl-2 text-right font-medium ${row.buyWins ? 'text-indigo-600' : 'text-emerald-600'}`}>
+                    {fmt(Math.abs(row.delta))}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─── Year-by-year table with download button ──────────────────────────────────
 
 export function DetailTable({ buySnapshots, rentSnapshots }) {

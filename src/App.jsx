@@ -2,52 +2,85 @@ import React, { useState, useMemo } from 'react';
 import { toronto } from './config/cities/toronto.js';
 import { projectBuyScenario, projectRentScenario, findBreakEven, buildChartData } from './engine/networth.js';
 import { BaseProfileInputs, BuyScenarioInputs, RentScenarioInputs } from './components/inputs/ScenarioInputs.jsx';
-import { HeadlineCard, NetWorthChart, CashFlowCard, WealthCompositionChart, DetailTable } from './components/outputs/Results.jsx';
+import { HeadlineCard, NetWorthChart, CashFlowCard, WealthCompositionChart, DetailTable, FIRECard, SensitivityTable } from './components/outputs/Results.jsx';
 import { Commentary } from './components/outputs/Commentary.jsx';
 
 const DEFAULT_PROFILE = {
-  annualSalary: 150000,
-  monthlyIncome: Math.round((150000 * (1 - 0.43)) / 12),
-  monthlyExpenses: 3500,
-  marginalRate: 0.43,
-  portfolioReturn: 0.07,
-  horizonYears: 10,
-  liquidAssets: 300000,
+  annualSalary:      150000,
+  monthlyIncome:     Math.round((150000 * (1 - 0.43)) / 12),
+  monthlyExpenses:   3500,
+  marginalRate:      0.43,
+  portfolioReturn:   0.07,
+  horizonYears:      10,
+  liquidAssets:      300000,
+  incomeGrowthRate:  0.03,
+  expenseGrowthRate: 0.02,
+  withdrawalRate:    0.03,
 };
 
 const DEFAULT_BUY = {
-  purchasePrice: 900000,
-  downPaymentPct: 0.20,
-  amortizationYears: 25,
-  mortgageRate: toronto.defaultMortgageRate,
-  appreciationRate: toronto.defaultAppreciation,
-  condoFeesMonthly: 0,
-  utilityBuyMonthly: toronto.buyUtilitiesMonthly,
-  renovationBudget: 0,
+  purchasePrice:       900000,
+  downPaymentPct:      0.20,
+  amortizationYears:   25,
+  mortgageRate:        toronto.defaultMortgageRate,
+  appreciationRate:    toronto.defaultAppreciation,
+  condoFeesMonthly:    0,
+  utilityBuyMonthly:   toronto.buyUtilitiesMonthly,
+  renovationBudget:    0,
   renovationValueAddPct: 75,
-  renovationSplit: [{ year: 1, pct: 100 }],
+  renovationSplit:     [{ year: 1, pct: 100 }],
+  // Buying closing costs (editable, default mirrors toronto.js)
+  legalFeesBuy:                  2000,
+  titleInsurance:                350,
+  homeInspection:                500,
+  buyerAgentCommissionPct:       0.025,
+  // Selling costs at exit (editable)
+  listingAgentCommissionPct:     0.025,
+  buyerAgentCommissionAtSalePct: 0.025,
+  sellerLegalFees:               1500,
 };
 
 const DEFAULT_RENT = {
-  monthlyRent: 3200,
-  rentIncreaseRate: toronto.defaultRentIncrease,
+  monthlyRent:        3200,
+  rentIncreaseRate:   toronto.defaultRentIncrease,
   utilityRentMonthly: toronto.rentUtilitiesMonthly,
 };
 
+const SENSITIVITY_RATES = [0.00, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08];
+
 export default function App() {
   const [profile, setProfile] = useState(DEFAULT_PROFILE);
-  const [buy, setBuy] = useState(DEFAULT_BUY);
-  const [rent, setRent] = useState(DEFAULT_RENT);
+  const [buy, setBuy]         = useState(DEFAULT_BUY);
+  const [rent, setRent]       = useState(DEFAULT_RENT);
 
   const params = useMemo(() => ({ ...profile, ...buy, ...rent }), [profile, buy, rent]);
 
-  const buySnapshots = useMemo(() => projectBuyScenario(params, toronto), [params]);
+  const buySnapshots  = useMemo(() => projectBuyScenario(params, toronto),  [params]);
   const rentSnapshots = useMemo(() => projectRentScenario(params, toronto), [params]);
-  const chartData = useMemo(() => buildChartData(buySnapshots, rentSnapshots), [buySnapshots, rentSnapshots]);
+  const chartData     = useMemo(() => buildChartData(buySnapshots, rentSnapshots), [buySnapshots, rentSnapshots]);
   const breakEvenYear = useMemo(() => findBreakEven(buySnapshots, rentSnapshots), [buySnapshots, rentSnapshots]);
 
-  const buyFinal = buySnapshots[buySnapshots.length - 1]?.totalNetWorth ?? 0;
+  const buyFinal  = buySnapshots[buySnapshots.length - 1]?.totalNetWorth  ?? 0;
   const rentFinal = rentSnapshots[rentSnapshots.length - 1]?.totalNetWorth ?? 0;
+
+  const buyFireYear  = useMemo(() => buySnapshots.find(s => s.fireAchieved)?.year  ?? null, [buySnapshots]);
+  const rentFireYear = useMemo(() => rentSnapshots.find(s => s.fireAchieved)?.year ?? null, [rentSnapshots]);
+
+  const sensitivityData = useMemo(() => SENSITIVITY_RATES.map(appreciationRate => {
+    const p = { ...params, appreciationRate };
+    const bSnaps = projectBuyScenario(p, toronto);
+    const rSnaps = projectRentScenario(p, toronto);
+    const bFinal = bSnaps[bSnaps.length - 1]?.totalNetWorth ?? 0;
+    const rFinal = rSnaps[rSnaps.length - 1]?.totalNetWorth ?? 0;
+    return {
+      appreciationRate,
+      buyFinal: bFinal,
+      rentFinal: rFinal,
+      delta: bFinal - rFinal,
+      buyWins: bFinal > rFinal,
+      breakEvenYear: findBreakEven(bSnaps, rSnaps),
+    };
+  }), [params]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -107,7 +140,23 @@ export default function App() {
               annualSalary={profile.annualSalary}
               marginalRate={profile.marginalRate}
             />
+
+            <FIRECard
+              buySnapshots={buySnapshots}
+              rentSnapshots={rentSnapshots}
+              buyFireYear={buyFireYear}
+              rentFireYear={rentFireYear}
+              horizonYears={profile.horizonYears}
+              withdrawalRate={profile.withdrawalRate}
+            />
+
             <WealthCompositionChart chartData={chartData} />
+
+            <SensitivityTable
+              sensitivityData={sensitivityData}
+              currentAppreciation={buy.appreciationRate}
+              horizonYears={profile.horizonYears}
+            />
 
             <Commentary
               params={{ profile, buy, rent }}

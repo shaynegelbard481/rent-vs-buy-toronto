@@ -6,46 +6,52 @@ import { toronto } from '../../config/cities/toronto.js';
 function blendedRate(tfsa, rrsp, taxable, marginalRate) {
   const total = tfsa + rrsp + taxable;
   if (total === 0) return marginalRate;
-  // TFSA: 0% effective. RRSP: full marginal on withdrawal. Taxable: 50% inclusion.
   const effectiveTaxable = taxable * (0.5 * marginalRate);
-  const effectiveRRSP = rrsp * marginalRate;
+  const effectiveRRSP    = rrsp * marginalRate;
   return (effectiveTaxable + effectiveRRSP) / total;
+}
+
+// Estimate combined Ontario + Federal marginal rate from gross salary (2024 brackets, simplified)
+function estimateOntarioRate(salary) {
+  if (salary <= 55000)  return 0.30;
+  if (salary <= 110000) return 0.43;
+  if (salary <= 150000) return 0.44;
+  if (salary <= 220000) return 0.48;
+  return 0.54;
 }
 
 export function BaseProfileInputs({ profile, onChange }) {
   const [refined, setRefined] = useState(false);
   const set = (key) => (val) => onChange({ ...profile, [key]: val });
 
-  // Derive monthly take-home from gross annual salary
   const monthlyTakeHome = profile.annualSalary
     ? Math.round((profile.annualSalary * (1 - profile.marginalRate)) / 12)
     : profile.monthlyIncome;
 
-  // Blended rate from refined inputs
   const computedBlendedRate = refined
     ? blendedRate(profile.tfsaBalance || 0, profile.rrspBalance || 0, profile.taxableBalance || 0, profile.marginalRate)
     : profile.marginalRate;
 
   const totalRefined = (profile.tfsaBalance || 0) + (profile.rrspBalance || 0) + (profile.taxableBalance || 0);
+  const ontarioEstimate = profile.annualSalary ? estimateOntarioRate(profile.annualSalary) : null;
+  const showAutoFill = ontarioEstimate && Math.abs(ontarioEstimate - profile.marginalRate) > 0.005;
 
   function handleRefinedToggle(on) {
     setRefined(on);
     if (on) {
-      // Seed refined fields from current liquidAssets (split evenly as starting point)
       const third = Math.round(profile.liquidAssets / 3);
       onChange({
         ...profile,
-        tfsaBalance: third,
-        rrspBalance: third,
+        tfsaBalance:    third,
+        rrspBalance:    third,
         taxableBalance: profile.liquidAssets - third * 2,
-        effectiveRate: computedBlendedRate,
+        effectiveRate:  computedBlendedRate,
       });
     } else {
       onChange({ ...profile, effectiveRate: profile.marginalRate });
     }
   }
 
-  // Keep liquidAssets in sync with refined totals
   function setRefinedField(key, val) {
     const next = { ...profile, [key]: val };
     next.liquidAssets = (next.tfsaBalance || 0) + (next.rrspBalance || 0) + (next.taxableBalance || 0);
@@ -61,13 +67,19 @@ export function BaseProfileInputs({ profile, onChange }) {
       </div>
       <div className="px-6 py-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
 
-        {/* Annual salary → derive take-home */}
+        {/* Salary + take-home */}
         <InputField
           label="Annual gross salary"
           value={profile.annualSalary}
-          onChange={val => onChange({ ...profile, annualSalary: val, monthlyIncome: Math.round((val * (1 - profile.marginalRate)) / 12) })}
+          onChange={val => onChange({
+            ...profile,
+            annualSalary:  val,
+            monthlyIncome: Math.round((val * (1 - profile.marginalRate)) / 12),
+          })}
           prefix="$"
-          helper={profile.annualSalary ? `≈ $${monthlyTakeHome.toLocaleString()}/mo after tax at ${Math.round(profile.marginalRate * 100)}%` : 'Used to derive monthly take-home'}
+          helper={profile.annualSalary
+            ? `≈ $${monthlyTakeHome.toLocaleString()}/mo after tax at ${Math.round(profile.marginalRate * 100)}%`
+            : 'Used to derive monthly take-home'}
         />
 
         <InputField
@@ -78,23 +90,42 @@ export function BaseProfileInputs({ profile, onChange }) {
           helper="Food, transport, lifestyle — excluding housing"
         />
 
-        <InputField
-          label="Marginal tax rate"
-          value={profile.marginalRate * 100}
-          onChange={v => {
-            const rate = v / 100;
-            const nextIncome = profile.annualSalary
-              ? Math.round((profile.annualSalary * (1 - rate)) / 12)
-              : profile.monthlyIncome;
-            onChange({ ...profile, marginalRate: rate, monthlyIncome: nextIncome });
-          }}
-          suffix="%"
-          step={1}
-          min={20}
-          max={55}
-          decimals={0}
-          helper="Applied to derive take-home and tax portfolio gains"
-        />
+        {/* Marginal rate with Ontario estimator */}
+        <div className="flex flex-col gap-1">
+          <InputField
+            label="Marginal tax rate"
+            value={profile.marginalRate * 100}
+            onChange={v => {
+              const rate = v / 100;
+              const nextIncome = profile.annualSalary
+                ? Math.round((profile.annualSalary * (1 - rate)) / 12)
+                : profile.monthlyIncome;
+              onChange({ ...profile, marginalRate: rate, monthlyIncome: nextIncome });
+            }}
+            suffix="%"
+            step={1}
+            min={20}
+            max={55}
+            decimals={0}
+            helper={ontarioEstimate
+              ? `Ontario+Federal est. ~${Math.round(ontarioEstimate * 100)}% at this income`
+              : 'Applied to derive take-home and tax portfolio gains'}
+          />
+          {showAutoFill && (
+            <button
+              onClick={() => {
+                const rate = ontarioEstimate;
+                const nextIncome = profile.annualSalary
+                  ? Math.round((profile.annualSalary * (1 - rate)) / 12)
+                  : profile.monthlyIncome;
+                onChange({ ...profile, marginalRate: rate, monthlyIncome: nextIncome });
+              }}
+              className="self-start text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+            >
+              Use Ontario estimate (~{Math.round(ontarioEstimate * 100)}%)
+            </button>
+          )}
+        </div>
 
         <InputField
           label="Expected portfolio return"
@@ -107,6 +138,46 @@ export function BaseProfileInputs({ profile, onChange }) {
           decimals={1}
           helper="Long-run annual return on invested capital"
         />
+
+        {/* Income & expense growth */}
+        <InputField
+          label="Annual income growth"
+          value={profile.incomeGrowthRate * 100}
+          onChange={v => set('incomeGrowthRate')(v / 100)}
+          suffix="%"
+          step={0.5}
+          min={0}
+          max={15}
+          decimals={1}
+          helper="Career progression, raises, promotions"
+        />
+
+        <InputField
+          label="Annual expense growth"
+          value={profile.expenseGrowthRate * 100}
+          onChange={v => set('expenseGrowthRate')(v / 100)}
+          suffix="%"
+          step={0.5}
+          min={0}
+          max={10}
+          decimals={1}
+          helper="Lifestyle inflation, cost of living"
+        />
+
+        {/* FIRE withdrawal rate */}
+        <div className="col-span-2">
+          <InputField
+            label="FIRE withdrawal rate"
+            value={profile.withdrawalRate * 100}
+            onChange={v => set('withdrawalRate')(v / 100)}
+            suffix="%"
+            step={0.5}
+            min={1}
+            max={6}
+            decimals={1}
+            helper="Safe withdrawal rate for retirement modelling — 3–4% is typical"
+          />
+        </div>
 
         {/* Net worth — simple vs refined toggle */}
         <div className="col-span-2">
@@ -179,11 +250,22 @@ export function BaseProfileInputs({ profile, onChange }) {
 export function BuyScenarioInputs({ buy, onChange, cityConfig = toronto }) {
   const set = (key) => (val) => onChange({ ...buy, [key]: val });
 
-  const ltt = cityConfig.landTransferTax(buy.purchasePrice);
+  const ltt         = cityConfig.landTransferTax(buy.purchasePrice);
   const lttBreakdown = cityConfig.landTransferTaxBreakdown(buy.purchasePrice);
-  const cmhc = cityConfig.cmhcInsurance(buy.purchasePrice, buy.downPaymentPct);
-  const buyerCommission = Math.round(cityConfig.buyerAgentCommission * buy.purchasePrice);
-  const closingTotal = ltt + cityConfig.legalFeesBuy + cityConfig.titleInsurance + cityConfig.homeInspection + buyerCommission;
+  const cmhc        = cityConfig.cmhcInsurance(buy.purchasePrice, buy.downPaymentPct);
+
+  const buyerCommission = Math.round((buy.buyerAgentCommissionPct ?? cityConfig.buyerAgentCommission) * buy.purchasePrice);
+  const closingTotal    = ltt
+    + (buy.legalFeesBuy ?? cityConfig.legalFeesBuy)
+    + (buy.titleInsurance ?? cityConfig.titleInsurance)
+    + (buy.homeInspection ?? cityConfig.homeInspection)
+    + buyerCommission;
+
+  const listingPct    = buy.listingAgentCommissionPct    ?? cityConfig.listingAgentCommission;
+  const buyerSalePct  = buy.buyerAgentCommissionAtSalePct ?? cityConfig.buyerAgentCommission;
+  const sellerLegal   = buy.sellerLegalFees              ?? cityConfig.sellerLegalFees;
+  const estSalePrice  = buy.purchasePrice * Math.pow(1 + buy.appreciationRate, buy.amortizationYears > 10 ? 10 : buy.amortizationYears);
+  const sellingTotal  = Math.round((listingPct + buyerSalePct) * buy.purchasePrice + sellerLegal);
 
   return (
     <div className="flex flex-col gap-4">
@@ -202,7 +284,9 @@ export function BuyScenarioInputs({ buy, onChange, cityConfig = toronto }) {
           max={50}
           step={1}
           format={v => `${v}% — $${Math.round(buy.purchasePrice * v / 100).toLocaleString()}`}
-          helper={buy.downPaymentPct < 0.2 ? `CMHC insurance: $${cmhc.toLocaleString()} added to mortgage` : 'No CMHC required (≥20% down)'}
+          helper={buy.downPaymentPct < 0.2
+            ? `CMHC insurance: $${cmhc.toLocaleString()} added to mortgage`
+            : 'No CMHC required (≥20% down)'}
         />
         <SelectField
           label="Amortization"
@@ -251,57 +335,107 @@ export function BuyScenarioInputs({ buy, onChange, cityConfig = toronto }) {
         />
       </SectionCard>
 
-      {/* Closing costs — transparent breakdown, note about editability */}
+      {/* Buying closing costs — editable */}
       <Collapsible
-        title="Closing Costs"
-        subtitle={`Est. total: $${closingTotal.toLocaleString()} — click to review`}
+        title="Buying Closing Costs"
+        subtitle={`Est. total: $${closingTotal.toLocaleString()} — click to edit`}
         defaultOpen={false}
       >
-        <div className="col-span-2 bg-slate-50 rounded-xl p-4 text-sm space-y-2">
-          <div className="flex justify-between">
-            <span className="text-slate-600">Provincial land transfer tax</span>
-            <span className="font-medium">${lttBreakdown.provincial.toLocaleString()}</span>
+        <div className="col-span-2 bg-slate-50 rounded-xl p-4 space-y-1 text-sm">
+          <div className="flex justify-between text-slate-500">
+            <span>Provincial land transfer tax (auto)</span>
+            <span className="font-medium text-slate-700">${lttBreakdown.provincial.toLocaleString()}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-slate-600">Toronto municipal land transfer tax</span>
-            <span className="font-medium">${lttBreakdown.municipal.toLocaleString()}</span>
+          <div className="flex justify-between text-slate-500 pb-2 border-b border-slate-200">
+            <span>Toronto municipal land transfer tax (auto)</span>
+            <span className="font-medium text-slate-700">${lttBreakdown.municipal.toLocaleString()}</span>
           </div>
           {cmhc > 0 && (
-            <div className="flex justify-between text-amber-700">
-              <span>CMHC insurance (added to mortgage)</span>
+            <div className="flex justify-between text-amber-700 pb-2">
+              <span>CMHC insurance (added to mortgage, auto)</span>
               <span className="font-medium">${cmhc.toLocaleString()}</span>
             </div>
           )}
-          <div className="flex justify-between">
-            <span className="text-slate-600">Buyer agent commission (2.5%)</span>
-            <span className="font-medium">${buyerCommission.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-600">Legal fees</span>
-            <span className="font-medium">${cityConfig.legalFeesBuy.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-600">Title insurance</span>
-            <span className="font-medium">${cityConfig.titleInsurance.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-600">Home inspection</span>
-            <span className="font-medium">${cityConfig.homeInspection.toLocaleString()}</span>
-          </div>
-          <div className="flex justify-between border-t border-slate-200 pt-2 font-semibold">
-            <span>Total closing costs</span>
-            <span>${closingTotal.toLocaleString()}</span>
-          </div>
         </div>
-        <p className="col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          Individual line items will be editable in v2.0. Values are calculated from Toronto 2024 rates.
-        </p>
-        <p className="col-span-2 text-xs text-slate-400">
-          Selling costs (~5% of sale price) are also deducted from equity at exit when calculating your net proceeds.
-        </p>
+
+        <InputField
+          label="Buyer agent commission"
+          value={(buy.buyerAgentCommissionPct ?? cityConfig.buyerAgentCommission) * 100}
+          onChange={v => set('buyerAgentCommissionPct')(v / 100)}
+          suffix="% of price"
+          step={0.1}
+          min={0}
+          max={5}
+          decimals={1}
+          helper={`= $${buyerCommission.toLocaleString()} at current price`}
+        />
+        <InputField
+          label="Legal fees"
+          value={buy.legalFeesBuy ?? cityConfig.legalFeesBuy}
+          onChange={set('legalFeesBuy')}
+          prefix="$"
+          helper="Lawyer fees on purchase"
+        />
+        <InputField
+          label="Title insurance"
+          value={buy.titleInsurance ?? cityConfig.titleInsurance}
+          onChange={set('titleInsurance')}
+          prefix="$"
+        />
+        <InputField
+          label="Home inspection"
+          value={buy.homeInspection ?? cityConfig.homeInspection}
+          onChange={set('homeInspection')}
+          prefix="$"
+        />
+
+        <div className="col-span-2 bg-slate-50 rounded-xl px-4 py-2.5 flex justify-between text-sm font-semibold">
+          <span>Total buying costs</span>
+          <span>${closingTotal.toLocaleString()}</span>
+        </div>
       </Collapsible>
 
-      {/* Renovation module — multi-year */}
+      {/* Selling costs at exit — editable */}
+      <Collapsible
+        title="Selling Costs at Exit"
+        subtitle={`Est. ${((listingPct + buyerSalePct) * 100).toFixed(1)}% of sale price + legal — click to edit`}
+        defaultOpen={false}
+      >
+        <InputField
+          label="Listing agent commission"
+          value={(buy.listingAgentCommissionPct ?? cityConfig.listingAgentCommission) * 100}
+          onChange={v => set('listingAgentCommissionPct')(v / 100)}
+          suffix="% of sale"
+          step={0.1}
+          min={0}
+          max={5}
+          decimals={1}
+          helper="Your agent's commission on sale"
+        />
+        <InputField
+          label="Buyer agent commission"
+          value={(buy.buyerAgentCommissionAtSalePct ?? cityConfig.buyerAgentCommission) * 100}
+          onChange={v => set('buyerAgentCommissionAtSalePct')(v / 100)}
+          suffix="% of sale"
+          step={0.1}
+          min={0}
+          max={5}
+          decimals={1}
+          helper="Buyer's agent commission at sale"
+        />
+        <InputField
+          label="Seller legal fees"
+          value={buy.sellerLegalFees ?? cityConfig.sellerLegalFees}
+          onChange={set('sellerLegalFees')}
+          prefix="$"
+          helper="Lawyer fees on sale"
+        />
+        <div className="col-span-2 bg-slate-50 rounded-xl px-4 py-2.5 text-sm text-slate-500">
+          Actual selling cost depends on your sale price at exit — deducted from equity each year in the model.
+        </div>
+      </Collapsible>
+
+      {/* Renovation module */}
       <Collapsible
         title="Renovation / Value-Add"
         subtitle="Optional: model a renovation and its expected equity uplift"

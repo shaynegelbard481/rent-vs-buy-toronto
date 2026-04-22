@@ -7,7 +7,11 @@
       "Bash(gh repo *)",
       "Bash(gh issue *)",
       "Bash(gh label *)",
-      "Bash(gh project *)"
+      "Bash(gh project *)",
+      "Bash(npm run *)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(lsof -ti:5173,5174)",
+      "Bash(xargs kill *)"
     ]
   }
 }
